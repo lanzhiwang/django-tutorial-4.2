@@ -1,0 +1,11 @@
+asgiref==3.7.2
+Django==4.2.11
+django-extensions==3.2.3
+importlib_metadata==7.0.2
+logging-tree==1.9
+platformdirs==4.2.0
+sqlparse==0.4.4
+tomli==2.0.1
+typing_extensions==4.10.0
+yapf==0.40.2
+zipp==3.18.1
