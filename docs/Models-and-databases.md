@@ -1,385 +1,1462 @@
 # Models and databases
 
-主要参考：
-
-* https://docs.djangoproject.com/en/4.2/topics/db/
-
-Django 是一个流行的 Web 框架，Django 使您可以更轻松地使用更少的代码更快地构建更好的 Web 应用程序。
-
-其中 Django Models 提供强大的和数据库交互的相关功能。
-
-本文总结 Django Models 的相关功能和用法。
-
-在数据库中，有几个很基础，但是很重要的操作，分别是：
-
-1. 创建数据表
-
-2. 对数据记录的增加，删除，修改
-
-3. 对数据记录的查找，之所以将查找单独列出来，是因为条件查找很复杂，尤其是多表的条件查找更复杂
-
-Django Models 对上述的三类操作都提供了强大的支持，下面分别描述。
-
-在描述 Django Models 之前，先说明一个调试 Django Models 方法。
-因为定义 Django Models 就是定义数据表，相关的操作也会映射为对应的 SQL 语句，
-因此，如果能实际看到最终在数据库中执行的 SQL 语句，这样就可以很快理解和判断 Django Models 相关操作是否合理。
-
-要想实际看到在数据库中执行的 SQL 语句，只需要调整对应的日志级别即可，操作如下：
-
-在 django settings.py 中增加如下 Log 配置
-
-重点是将 django.db 日志级别调整为 DEBUG
-
-```python
-LOGGING = {
-    "version": 1,
-    "disable_existing_loggers": False,
-    "handlers": {
-        "console": {
-            "class": "logging.StreamHandler",
-        },
-    },
-    "root": {
-        "handlers": ["console"],
-        "level": "WARNING",
-    },
-    "loggers": {
-        "django.request": {
-            "handlers": ["console"],
-            "level": "DEBUG",
-            "propagate": False,
-        },
-        "django.db": {
-            "handlers": ["console"],
-            "level": "DEBUG",
-            "propagate": False,
-        },
-        "django.dispatch": {
-            "handlers": ["console"],
-            "level": "DEBUG",
-            "propagate": False,
-        }
-    },
-}
-
-```
-
-最终效果如下：
-
-迁移数据
-
-```bash
-$ python manage.py migrate
-(0.002)
-            SELECT name, type FROM sqlite_master
-            WHERE type in ('table', 'view') AND NOT name='sqlite_sequence'
-            ORDER BY name; args=None; alias=default
-(0.001)
-            SELECT name, type FROM sqlite_master
-            WHERE type in ('table', 'view') AND NOT name='sqlite_sequence'
-            ORDER BY name; args=None; alias=default
-Operations to perform:
-  Apply all migrations: admin, auth, contenttypes, myapp, myapp2, polls, sessions
-Running migrations:
-(0.001)
-            SELECT name, type FROM sqlite_master
-            WHERE type in ('table', 'view') AND NOT name='sqlite_sequence'
-            ORDER BY name; args=None; alias=default
-(0.000) PRAGMA foreign_keys = OFF; args=None; alias=default
-(0.000) PRAGMA foreign_keys; args=None; alias=default
-(0.000) BEGIN; args=None; alias=default
-CREATE TABLE "django_migrations" ("id" integer NOT NULL PRIMARY KEY AUTOINCREMENT, "app" varchar(255) NOT NULL, "name" varchar(255) NOT NULL, "applied" datetime NOT NULL); (params None)
-(0.004) CREATE TABLE "django_migrations" ("id" integer NOT NULL PRIMARY KEY AUTOINCREMENT, "app" varchar(255) NOT NULL, "name" varchar(255) NOT NULL, "applied" datetime NOT NULL); args=None; alias=default
-(0.000) PRAGMA foreign_key_check; args=None; alias=default
-(0.003) COMMIT; args=None; alias=default
-(0.000) PRAGMA foreign_keys = ON; args=None; alias=default
-  Applying contenttypes.0001_initial...(0.000) PRAGMA foreign_keys = OFF; args=None; alias=default
-(0.000) PRAGMA foreign_keys; args=None; alias=default
-(0.000) BEGIN; args=None; alias=default
-CREATE TABLE "django_content_type" ("id" integer NOT NULL PRIMARY KEY AUTOINCREMENT, "name" varchar(100) NOT NULL, "app_label" varchar(100) NOT NULL, "model" varchar(100) NOT NULL); (params None)
-```
-
-对数据库进行增删改查操作
-
-```python
-
->>> from datetime import date
->>> from myapp2.models import Blog, Entry
->>>
->>> beatles = Blog.objects.create(name='Beatles Blog')
-(0.020) INSERT INTO "myapp2_blog" ("name", "tagline") VALUES ('Beatles Blog', ''); args=['Beatles Blog', '']; alias=default
-
->>> pop = Blog.objects.create(name='Pop Music Blog')
-(0.014) INSERT INTO "myapp2_blog" ("name", "tagline") VALUES ('Pop Music Blog', ''); args=['Pop Music Blog', '']; alias=default
-
->>> Entry.objects.create(blog=beatles, headline='New Lennon Biography', pub_date=date(2008, 6, 1))
-(0.012) INSERT INTO "myapp2_entry" ("blog_id", "headline", "body_text", "pub_date", "mod_date", "number_of_comments", "number_of_pingbacks", "rating") VALUES (1, 'New Lennon Biography', '', '2008-06-01', '2024-03-16', 0, 0, 5); args=[1, 'New Lennon Biography', '', '2008-06-01', '2024-03-16', 0, 0, 5]; alias=default
-<Entry: New Lennon Biography>
-
->>> Blog.objects.filter(entry__headline__contains='Lennon', entry__pub_date__year=2008)
-(0.001) SELECT "myapp2_blog"."id", "myapp2_blog"."name", "myapp2_blog"."tagline" FROM "myapp2_blog" INNER JOIN "myapp2_entry" ON ("myapp2_blog"."id" = "myapp2_entry"."blog_id") WHERE ("myapp2_entry"."headline" LIKE '%Lennon%' ESCAPE '\' AND "myapp2_entry"."pub_date" BETWEEN '2008-01-01' AND '2008-12-31') LIMIT 21; args=('%Lennon%', '2008-01-01', '2008-12-31'); alias=default
-<QuerySet [<Blog: Beatles Blog>]>
->>>
-
->>> Blog.objects.filter(entry__headline__contains='Lennon').filter(entry__pub_date__year=2008)
-(0.002) SELECT "myapp2_blog"."id", "myapp2_blog"."name", "myapp2_blog"."tagline" FROM "myapp2_blog" INNER JOIN "myapp2_entry" ON ("myapp2_blog"."id" = "myapp2_entry"."blog_id") INNER JOIN "myapp2_entry" T3 ON ("myapp2_blog"."id" = T3."blog_id") WHERE ("myapp2_entry"."headline" LIKE '%Lennon%' ESCAPE '\' AND T3."pub_date" BETWEEN '2008-01-01' AND '2008-12-31') LIMIT 21; args=('%Lennon%', '2008-01-01', '2008-12-31'); alias=default
-<QuerySet [<Blog: Beatles Blog>, <Blog: Beatles Blog>, <Blog: Pop Music Blog>]>
->>>
-
-```
-
-**在下面说明的任何操作都会打印对应的日志，应该时刻查看这些日志，这样就可以很好的理解操作是否正确合理。**
-
-## 创建数据表
-
-在数据库中创建数据表，映射到 Django Models 中就是定义 models 类。
-
-例如要创建如下数据表，
-
-```
-CREATE TABLE myapp_person (
-    "id" bigint NOT NULL PRIMARY KEY GENERATED BY DEFAULT AS IDENTITY,
-    "first_name" varchar(30) NOT NULL,
-    "last_name" varchar(30) NOT NULL
-);
-```
-
-只需要在定义如下 models 类即可，
+## [Many-to-many relationships](https://docs.djangoproject.com/en/4.2/topics/db/examples/many_to_many/)
 
 ```python
 from django.db import models
 
 
-class Person(models.Model):
+class Publication(models.Model):
+    title = models.CharField(max_length=30)
+
+    class Meta:
+        ordering = ["title"]
+
+    def __str__(self):
+        return self.title
+
+
+class Article(models.Model):
+    headline = models.CharField(max_length=100)
+    publications = models.ManyToManyField(Publication)
+
+    class Meta:
+        ordering = ["headline"]
+
+    def __str__(self):
+        return self.headline
+
+"""
+CREATE TABLE "myapp_article" (
+    "id" integer NOT NULL PRIMARY KEY AUTOINCREMENT,
+    "headline" varchar(100) NOT NULL
+)
+
+CREATE TABLE "myapp_publication" (
+    "id" integer NOT NULL PRIMARY KEY AUTOINCREMENT,
+    "title" varchar(30) NOT NULL
+)
+
+CREATE TABLE "myapp_article_publications" (
+    "id" integer NOT NULL PRIMARY KEY AUTOINCREMENT,
+    "article_id" bigint NOT NULL REFERENCES "myapp_article" ("id") DEFERRABLE INITIALLY DEFERRED,
+    "publication_id" bigint NOT NULL REFERENCES "myapp_publication" ("id") DEFERRABLE INITIALLY DEFERRED
+)
+
+"""
+
+```
+
+```bash
+root@0867e20c8b98:/django-tutorial-4.2/mysite# python manage.py shell
+<--""
+   Level WARNING
+************************************ manage.py ************************************
+Python 3.10.18 (main, Jul  1 2025, 05:26:33) [GCC 10.2.1 20210110] on linux
+Type "help", "copyright", "credits" or "license" for more information.
+(InteractiveConsole)
+>>>
+>>> from myapp.models import Publication, Article
+>>>
+>>> p1 = Publication(title="The Python Journal")
+>>> p1.save()
+(0.018) INSERT INTO "myapp_publication" ("title") VALUES ('The Python Journal'); args=['The Python Journal']; alias=default
+>>>
+>>> p2 = Publication(title="Science News")
+>>> p2.save()
+(0.017) INSERT INTO "myapp_publication" ("title") VALUES ('Science News'); args=['Science News']; alias=default
+>>>
+>>> p3 = Publication(title="Science Weekly")
+>>> p3.save()
+(0.018) INSERT INTO "myapp_publication" ("title") VALUES ('Science Weekly'); args=['Science Weekly']; alias=default
+>>>
+>>> a1 = Article(headline="Django lets you build web apps easily")
+>>> a1.publications.add(p1)
+Traceback (most recent call last):
+  File "<console>", line 1, in <module>
+  File "/usr/local/lib/python3.10/site-packages/django/db/models/fields/related_descriptors.py", line 617, in __get__
+    return self.related_manager_cls(instance)
+  File "/usr/local/lib/python3.10/site-packages/django/db/models/fields/related_descriptors.py", line 1022, in __init__
+    raise ValueError(
+ValueError: "<Article: Django lets you build web apps easily>" needs to have a value for field "id" before this many-to-many relationship can be used.
+>>>
+>>> a1.save()
+(0.018) INSERT INTO "myapp_article" ("headline") VALUES ('Django lets you build web apps easily'); args=['Django lets you build web apps easily']; alias=default
+>>>
+# 使用 publications 属性
+>>> a1.publications.add(p1)
+(0.000) BEGIN; args=None; alias=default
+(0.020) INSERT OR IGNORE INTO "myapp_article_publications" ("article_id", "publication_id") VALUES (1, 1); args=(1, 1); alias=default
+(0.006) COMMIT; args=None; alias=default
+>>>
+>>> a2 = Article(headline="NASA uses Python")
+>>> a2.save()
+(0.021) INSERT INTO "myapp_article" ("headline") VALUES ('NASA uses Python'); args=['NASA uses Python']; alias=default
+
+>>> a2.publications.add(p1, p2)
+(0.000) BEGIN; args=None; alias=default
+(0.021) INSERT OR IGNORE INTO "myapp_article_publications" ("article_id", "publication_id") VALUES (2, 1), (2, 2); args=(2, 1, 2, 2); alias=default
+(0.008) COMMIT; args=None; alias=default
+
+>>> a2.publications.add(p3)
+(0.000) BEGIN; args=None; alias=default
+(0.015) INSERT OR IGNORE INTO "myapp_article_publications" ("article_id", "publication_id") VALUES (2, 3); args=(2, 3); alias=default
+(0.007) COMMIT; args=None; alias=default
+>>>
+
+>>> a2.publications.add(p3)
+(0.000) BEGIN; args=None; alias=default
+(0.009) INSERT OR IGNORE INTO "myapp_article_publications" ("article_id", "publication_id") VALUES (2, 3); args=(2, 3); alias=default
+(0.005) COMMIT; args=None; alias=default
+>>>
+
+# 使用 publications 属性
+>>> new_publication = a2.publications.create(title="Highlights for Children")
+(0.016) INSERT INTO "myapp_publication" ("title") VALUES ('Highlights for Children'); args=['Highlights for Children']; alias=default
+(0.000) BEGIN; args=None; alias=default
+(0.015) INSERT OR IGNORE INTO "myapp_article_publications" ("article_id", "publication_id") VALUES (2, 4); args=(2, 4); alias=default
+(0.008) COMMIT; args=None; alias=default
+>>>
+
+>>> dir(Publication)
+['DoesNotExist', 'MultipleObjectsReturned', '__class__', '__delattr__', '__dict__', '__dir__', '__doc__', '__eq__', '__format__', '__ge__', '__getattribute__', '__getstate__', '__gt__', '__hash__', '__init__', '__init_subclass__', '__le__', '__lt__', '__module__', '__ne__', '__new__', '__reduce__', '__reduce_ex__', '__repr__', '__setattr__', '__setstate__', '__sizeof__', '__str__', '__subclasshook__', '__weakref__', '_check_column_name_clashes', '_check_constraints', '_check_db_table_comment', '_check_default_pk', '_check_field_name_clashes', '_check_fields', '_check_id_field', '_check_index_together', '_check_indexes', '_check_local_fields', '_check_long_column_names', '_check_m2m_through_same_relationship', '_check_managers', '_check_model', '_check_model_name_db_lookup_clashes', '_check_ordering', '_check_property_name_related_field_accessor_clashes', '_check_single_primary_key', '_check_swappable', '_check_unique_together', '_do_insert', '_do_update', '_get_FIELD_display', '_get_expr_references', '_get_field_value_map', '_get_next_or_previous_by_FIELD', '_get_next_or_previous_in_order', '_get_pk_val', '_get_unique_checks', '_meta', '_perform_date_checks', '_perform_unique_checks', '_prepare_related_fields_for_save', '_save_parents', '_save_table', '_set_pk_val', 'adelete', 'arefresh_from_db', 'article_set', 'asave', 'check', 'clean', 'clean_fields', 'date_error_message', 'delete', 'from_db', 'full_clean', 'get_constraints', 'get_deferred_fields', 'id', 'objects', 'pk', 'prepare_database_save', 'refresh_from_db', 'save', 'save_base', 'serializable_value', 'title', 'unique_error_message', 'validate_constraints', 'validate_unique']
+>>>
+>>> dir(p1)
+[
+    'DoesNotExist',
+    'MultipleObjectsReturned',
+    '__class__',
+    '__delattr__',
+    '__dict__',
+    '__dir__',
+    '__doc__',
+    '__eq__',
+    '__format__',
+    '__ge__',
+    '__getattribute__',
+    '__getstate__',
+    '__gt__',
+    '__hash__',
+    '__init__',
+    '__init_subclass__',
+    '__le__',
+    '__lt__',
+    '__module__',
+    '__ne__',
+    '__new__',
+    '__reduce__',
+    '__reduce_ex__',
+    '__repr__',
+    '__setattr__',
+    '__setstate__',
+    '__sizeof__',
+    '__str__',
+    '__subclasshook__',
+    '__weakref__',
+    '_check_column_name_clashes',
+    '_check_constraints',
+    '_check_db_table_comment',
+    '_check_default_pk',
+    '_check_field_name_clashes',
+    '_check_fields',
+    '_check_id_field',
+    '_check_index_together',
+    '_check_indexes',
+    '_check_local_fields',
+    '_check_long_column_names',
+    '_check_m2m_through_same_relationship',
+    '_check_managers',
+    '_check_model',
+    '_check_model_name_db_lookup_clashes',
+    '_check_ordering',
+    '_check_property_name_related_field_accessor_clashes',
+    '_check_single_primary_key',
+    '_check_swappable',
+    '_check_unique_together',
+    '_do_insert',
+    '_do_update',
+    '_get_FIELD_display',
+    '_get_expr_references',
+    '_get_field_value_map',
+    '_get_next_or_previous_by_FIELD',
+    '_get_next_or_previous_in_order',
+    '_get_pk_val',
+    '_get_unique_checks',
+    '_meta',
+    '_perform_date_checks',
+    '_perform_unique_checks',
+    '_prepare_related_fields_for_save',
+    '_save_parents',
+    '_save_table',
+    '_set_pk_val',
+    '_state',  # 多了这个属性
+    'adelete',
+    'arefresh_from_db',
+    'article_set',
+    'asave',
+    'check',
+    'clean',
+    'clean_fields',
+    'date_error_message',
+    'delete',
+    'from_db',
+    'full_clean',
+    'get_constraints',
+    'get_deferred_fields',
+    'id',
+    'objects',
+    'pk',
+    'prepare_database_save',
+    'refresh_from_db',
+    'save',
+    'save_base',
+    'serializable_value',
+    'title',
+    'unique_error_message',
+    'validate_constraints',
+    'validate_unique'
+]
+>>>
+
+>>> dir(Article)
+['DoesNotExist', 'MultipleObjectsReturned', '__class__', '__delattr__', '__dict__', '__dir__', '__doc__', '__eq__', '__format__', '__ge__', '__getattribute__', '__getstate__', '__gt__', '__hash__', '__init__', '__init_subclass__', '__le__', '__lt__', '__module__', '__ne__', '__new__', '__reduce__', '__reduce_ex__', '__repr__', '__setattr__', '__setstate__', '__sizeof__', '__str__', '__subclasshook__', '__weakref__', '_check_column_name_clashes', '_check_constraints', '_check_db_table_comment', '_check_default_pk', '_check_field_name_clashes', '_check_fields', '_check_id_field', '_check_index_together', '_check_indexes', '_check_local_fields', '_check_long_column_names', '_check_m2m_through_same_relationship', '_check_managers', '_check_model', '_check_model_name_db_lookup_clashes', '_check_ordering', '_check_property_name_related_field_accessor_clashes', '_check_single_primary_key', '_check_swappable', '_check_unique_together', '_do_insert', '_do_update', '_get_FIELD_display', '_get_expr_references', '_get_field_value_map', '_get_next_or_previous_by_FIELD', '_get_next_or_previous_in_order', '_get_pk_val', '_get_unique_checks', '_meta', '_perform_date_checks', '_perform_unique_checks', '_prepare_related_fields_for_save', '_save_parents', '_save_table', '_set_pk_val', 'adelete', 'arefresh_from_db', 'asave', 'check', 'clean', 'clean_fields', 'date_error_message', 'delete', 'from_db', 'full_clean', 'get_constraints', 'get_deferred_fields', 'headline', 'id', 'objects', 'pk', 'prepare_database_save', 'publications', 'refresh_from_db', 'save', 'save_base', 'serializable_value', 'unique_error_message', 'validate_constraints', 'validate_unique']
+>>>
+>>> dir(a1)
+[
+    'DoesNotExist',
+    'MultipleObjectsReturned',
+    '__class__',
+    '__delattr__',
+    '__dict__',
+    '__dir__',
+    '__doc__',
+    '__eq__',
+    '__format__',
+    '__ge__',
+    '__getattribute__',
+    '__getstate__',
+    '__gt__',
+    '__hash__',
+    '__init__',
+    '__init_subclass__',
+    '__le__',
+    '__lt__',
+    '__module__',
+    '__ne__',
+    '__new__',
+    '__reduce__',
+    '__reduce_ex__',
+    '__repr__',
+    '__setattr__',
+    '__setstate__',
+    '__sizeof__',
+    '__str__',
+    '__subclasshook__',
+    '__weakref__',
+    '_check_column_name_clashes',
+    '_check_constraints',
+    '_check_db_table_comment',
+    '_check_default_pk',
+    '_check_field_name_clashes',
+    '_check_fields',
+    '_check_id_field',
+    '_check_index_together',
+    '_check_indexes',
+    '_check_local_fields',
+    '_check_long_column_names',
+    '_check_m2m_through_same_relationship',
+    '_check_managers',
+    '_check_model',
+    '_check_model_name_db_lookup_clashes',
+    '_check_ordering',
+    '_check_property_name_related_field_accessor_clashes',
+    '_check_single_primary_key',
+    '_check_swappable',
+    '_check_unique_together',
+    '_do_insert',
+    '_do_update',
+    '_get_FIELD_display',
+    '_get_expr_references',
+    '_get_field_value_map',
+    '_get_next_or_previous_by_FIELD',
+    '_get_next_or_previous_in_order',
+    '_get_pk_val',
+    '_get_unique_checks',
+    '_meta',
+    '_perform_date_checks',
+    '_perform_unique_checks',
+    '_prepare_related_fields_for_save',
+    '_save_parents',
+    '_save_table',
+    '_set_pk_val',
+    '_state',  # 多了这个属性
+    'adelete',
+    'arefresh_from_db',
+    'asave',
+    'check',
+    'clean',
+    'clean_fields',
+    'date_error_message',
+    'delete',
+    'from_db',
+    'full_clean',
+    'get_constraints',
+    'get_deferred_fields',
+    'headline',
+    'id',
+    'objects',
+    'pk',
+    'prepare_database_save',
+    'publications',
+    'refresh_from_db',
+    'save',
+    'save_base',
+    'serializable_value',
+    'unique_error_message',
+    'validate_constraints',
+    'validate_unique'
+]
+>>>
+
+
+# 使用 publications 属性
+>>> a1.publications.all()
+(0.004) SELECT "myapp_publication"."id", "myapp_publication"."title" FROM "myapp_publication" INNER JOIN "myapp_article_publications" ON ("myapp_publication"."id" = "myapp_article_publications"."publication_id") WHERE "myapp_article_publications"."article_id" = 1 ORDER BY "myapp_publication"."title" ASC LIMIT 21; args=(1,); alias=default
+<QuerySet [<Publication: The Python Journal>]>
+>>>
+>>> a2.publications.all()
+(0.002) SELECT "myapp_publication"."id", "myapp_publication"."title" FROM "myapp_publication" INNER JOIN "myapp_article_publications" ON ("myapp_publication"."id" = "myapp_article_publications"."publication_id") WHERE "myapp_article_publications"."article_id" = 2 ORDER BY "myapp_publication"."title" ASC LIMIT 21; args=(2,); alias=default
+<QuerySet [<Publication: Highlights for Children>, <Publication: Science News>, <Publication: Science Weekly>, <Publication: The Python Journal>]>
+>>>
+
+# 使用 article_set 属性
+>>> p2.article_set.all()
+(0.002) SELECT "myapp_article"."id", "myapp_article"."headline" FROM "myapp_article" INNER JOIN "myapp_article_publications" ON ("myapp_article"."id" = "myapp_article_publications"."article_id") WHERE "myapp_article_publications"."publication_id" = 2 ORDER BY "myapp_article"."headline" ASC LIMIT 21; args=(2,); alias=default
+<QuerySet [<Article: NASA uses Python>]>
+>>>
+>>> p1.article_set.all()
+(0.002) SELECT "myapp_article"."id", "myapp_article"."headline" FROM "myapp_article" INNER JOIN "myapp_article_publications" ON ("myapp_article"."id" = "myapp_article_publications"."article_id") WHERE "myapp_article_publications"."publication_id" = 1 ORDER BY "myapp_article"."headline" ASC LIMIT 21; args=(1,); alias=default
+<QuerySet [<Article: Django lets you build web apps easily>, <Article: NASA uses Python>]>
+>>>
+>>> Publication.objects.get(id=4).article_set.all()
+(0.002) SELECT "myapp_publication"."id", "myapp_publication"."title" FROM "myapp_publication" WHERE "myapp_publication"."id" = 4 LIMIT 21; args=(4,); alias=default
+(0.001) SELECT "myapp_article"."id", "myapp_article"."headline" FROM "myapp_article" INNER JOIN "myapp_article_publications" ON ("myapp_article"."id" = "myapp_article_publications"."article_id") WHERE "myapp_article_publications"."publication_id" = 4 ORDER BY "myapp_article"."headline" ASC LIMIT 21; args=(4,); alias=default
+<QuerySet [<Article: NASA uses Python>]>
+>>>
+>>> Article.objects.filter(publications__id=1)
+(0.002) SELECT "myapp_article"."id", "myapp_article"."headline" FROM "myapp_article" INNER JOIN "myapp_article_publications" ON ("myapp_article"."id" = "myapp_article_publications"."article_id") WHERE "myapp_article_publications"."publication_id" = 1 ORDER BY "myapp_article"."headline" ASC LIMIT 21; args=(1,); alias=default
+<QuerySet [<Article: Django lets you build web apps easily>, <Article: NASA uses Python>]>
+>>>
+>>> Article.objects.filter(publications__pk=1)
+(0.001) SELECT "myapp_article"."id", "myapp_article"."headline" FROM "myapp_article" INNER JOIN "myapp_article_publications" ON ("myapp_article"."id" = "myapp_article_publications"."article_id") WHERE "myapp_article_publications"."publication_id" = 1 ORDER BY "myapp_article"."headline" ASC LIMIT 21; args=(1,); alias=default
+<QuerySet [<Article: Django lets you build web apps easily>, <Article: NASA uses Python>]>
+>>>
+>>> Article.objects.filter(publications=1)
+(0.002) SELECT "myapp_article"."id", "myapp_article"."headline" FROM "myapp_article" INNER JOIN "myapp_article_publications" ON ("myapp_article"."id" = "myapp_article_publications"."article_id") WHERE "myapp_article_publications"."publication_id" = 1 ORDER BY "myapp_article"."headline" ASC LIMIT 21; args=(1,); alias=default
+<QuerySet [<Article: Django lets you build web apps easily>, <Article: NASA uses Python>]>
+>>>
+>>> Article.objects.filter(publications=p1)
+(0.002) SELECT "myapp_article"."id", "myapp_article"."headline" FROM "myapp_article" INNER JOIN "myapp_article_publications" ON ("myapp_article"."id" = "myapp_article_publications"."article_id") WHERE "myapp_article_publications"."publication_id" = 1 ORDER BY "myapp_article"."headline" ASC LIMIT 21; args=(1,); alias=default
+<QuerySet [<Article: Django lets you build web apps easily>, <Article: NASA uses Python>]>
+>>>
+>>> Article.objects.filter(publications__title__startswith="Science")
+(0.002) SELECT "myapp_article"."id", "myapp_article"."headline" FROM "myapp_article" INNER JOIN "myapp_article_publications" ON ("myapp_article"."id" = "myapp_article_publications"."article_id") INNER JOIN "myapp_publication" ON ("myapp_article_publications"."publication_id" = "myapp_publication"."id") WHERE "myapp_publication"."title" LIKE 'Science%' ESCAPE '\' ORDER BY "myapp_article"."headline" ASC LIMIT 21; args=('Science%',); alias=default
+<QuerySet [<Article: NASA uses Python>, <Article: NASA uses Python>]>
+>>>
+>>> Article.objects.filter(publications__title__startswith="Science").distinct()
+(0.002) SELECT DISTINCT "myapp_article"."id", "myapp_article"."headline" FROM "myapp_article" INNER JOIN "myapp_article_publications" ON ("myapp_article"."id" = "myapp_article_publications"."article_id") INNER JOIN "myapp_publication" ON ("myapp_article_publications"."publication_id" = "myapp_publication"."id") WHERE "myapp_publication"."title" LIKE 'Science%' ESCAPE '\' ORDER BY "myapp_article"."headline" ASC LIMIT 21; args=('Science%',); alias=default
+<QuerySet [<Article: NASA uses Python>]>
+>>>
+>>> Article.objects.filter(publications__title__startswith="Science").count()
+(0.001) SELECT COUNT(*) AS "__count" FROM "myapp_article" INNER JOIN "myapp_article_publications" ON ("myapp_article"."id" = "myapp_article_publications"."article_id") INNER JOIN "myapp_publication" ON ("myapp_article_publications"."publication_id" = "myapp_publication"."id") WHERE "myapp_publication"."title" LIKE 'Science%' ESCAPE '\'; args=('Science%',); alias=default
+2
+>>>
+>>> Article.objects.filter(publications__title__startswith="Science").distinct().count()
+(0.002) SELECT COUNT(*) FROM (SELECT DISTINCT "myapp_article"."id" AS "col1", "myapp_article"."headline" AS "col2" FROM "myapp_article" INNER JOIN "myapp_article_publications" ON ("myapp_article"."id" = "myapp_article_publications"."article_id") INNER JOIN "myapp_publication" ON ("myapp_article_publications"."publication_id" = "myapp_publication"."id") WHERE "myapp_publication"."title" LIKE 'Science%' ESCAPE '\') subquery; args=('Science%',); alias=default
+1
+>>>
+>>> Article.objects.filter(publications__in=[1, 2]).distinct()
+(0.002) SELECT DISTINCT "myapp_article"."id", "myapp_article"."headline" FROM "myapp_article" INNER JOIN "myapp_article_publications" ON ("myapp_article"."id" = "myapp_article_publications"."article_id") WHERE "myapp_article_publications"."publication_id" IN (1, 2) ORDER BY "myapp_article"."headline" ASC LIMIT 21; args=(1, 2); alias=default
+<QuerySet [<Article: Django lets you build web apps easily>, <Article: NASA uses Python>]>
+>>>
+>>> Article.objects.filter(publications__in=[p1, p2]).distinct()
+(0.001) SELECT DISTINCT "myapp_article"."id", "myapp_article"."headline" FROM "myapp_article" INNER JOIN "myapp_article_publications" ON ("myapp_article"."id" = "myapp_article_publications"."article_id") WHERE "myapp_article_publications"."publication_id" IN (1, 2) ORDER BY "myapp_article"."headline" ASC LIMIT 21; args=(1, 2); alias=default
+<QuerySet [<Article: Django lets you build web apps easily>, <Article: NASA uses Python>]>
+>>>
+>>> Publication.objects.filter(id=1)
+(0.002) SELECT "myapp_publication"."id", "myapp_publication"."title" FROM "myapp_publication" WHERE "myapp_publication"."id" = 1 ORDER BY "myapp_publication"."title" ASC LIMIT 21; args=(1,); alias=default
+<QuerySet [<Publication: The Python Journal>]>
+>>>
+>>> Publication.objects.filter(pk=1)
+(0.001) SELECT "myapp_publication"."id", "myapp_publication"."title" FROM "myapp_publication" WHERE "myapp_publication"."id" = 1 ORDER BY "myapp_publication"."title" ASC LIMIT 21; args=(1,); alias=default
+<QuerySet [<Publication: The Python Journal>]>
+>>>
+
+# 使用 article 属性, 没有使用 article_set 属性
+>>> Publication.objects.filter(article__headline__startswith="NASA")
+(0.003) SELECT "myapp_publication"."id", "myapp_publication"."title" FROM "myapp_publication" INNER JOIN "myapp_article_publications" ON ("myapp_publication"."id" = "myapp_article_publications"."publication_id") INNER JOIN "myapp_article" ON ("myapp_article_publications"."article_id" = "myapp_article"."id") WHERE "myapp_article"."headline" LIKE 'NASA%' ESCAPE '\' ORDER BY "myapp_publication"."title" ASC LIMIT 21; args=('NASA%',); alias=default
+<QuerySet [<Publication: Highlights for Children>, <Publication: Science News>, <Publication: Science Weekly>, <Publication: The Python Journal>]>
+>>>
+>>> Publication.objects.filter(article__id=1)
+(0.002) SELECT "myapp_publication"."id", "myapp_publication"."title" FROM "myapp_publication" INNER JOIN "myapp_article_publications" ON ("myapp_publication"."id" = "myapp_article_publications"."publication_id") WHERE "myapp_article_publications"."article_id" = 1 ORDER BY "myapp_publication"."title" ASC LIMIT 21; args=(1,); alias=default
+<QuerySet [<Publication: The Python Journal>]>
+>>>
+>>> Publication.objects.filter(article__pk=1)
+(0.001) SELECT "myapp_publication"."id", "myapp_publication"."title" FROM "myapp_publication" INNER JOIN "myapp_article_publications" ON ("myapp_publication"."id" = "myapp_article_publications"."publication_id") WHERE "myapp_article_publications"."article_id" = 1 ORDER BY "myapp_publication"."title" ASC LIMIT 21; args=(1,); alias=default
+<QuerySet [<Publication: The Python Journal>]>
+>>>
+>>> Publication.objects.filter(article=1)
+(0.002) SELECT "myapp_publication"."id", "myapp_publication"."title" FROM "myapp_publication" INNER JOIN "myapp_article_publications" ON ("myapp_publication"."id" = "myapp_article_publications"."publication_id") WHERE "myapp_article_publications"."article_id" = 1 ORDER BY "myapp_publication"."title" ASC LIMIT 21; args=(1,); alias=default
+<QuerySet [<Publication: The Python Journal>]>
+>>>
+>>> Publication.objects.filter(article=a1)
+(0.002) SELECT "myapp_publication"."id", "myapp_publication"."title" FROM "myapp_publication" INNER JOIN "myapp_article_publications" ON ("myapp_publication"."id" = "myapp_article_publications"."publication_id") WHERE "myapp_article_publications"."article_id" = 1 ORDER BY "myapp_publication"."title" ASC LIMIT 21; args=(1,); alias=default
+<QuerySet [<Publication: The Python Journal>]>
+>>>
+>>> Publication.objects.filter(article__in=[1, 2]).distinct()
+(0.002) SELECT DISTINCT "myapp_publication"."id", "myapp_publication"."title" FROM "myapp_publication" INNER JOIN "myapp_article_publications" ON ("myapp_publication"."id" = "myapp_article_publications"."publication_id") WHERE "myapp_article_publications"."article_id" IN (1, 2) ORDER BY "myapp_publication"."title" ASC LIMIT 21; args=(1, 2); alias=default
+<QuerySet [<Publication: Highlights for Children>, <Publication: Science News>, <Publication: Science Weekly>, <Publication: The Python Journal>]>
+>>>
+>>> Publication.objects.filter(article__in=[a1, a2]).distinct()
+(0.002) SELECT DISTINCT "myapp_publication"."id", "myapp_publication"."title" FROM "myapp_publication" INNER JOIN "myapp_article_publications" ON ("myapp_publication"."id" = "myapp_article_publications"."publication_id") WHERE "myapp_article_publications"."article_id" IN (1, 2) ORDER BY "myapp_publication"."title" ASC LIMIT 21; args=(1, 2); alias=default
+<QuerySet [<Publication: Highlights for Children>, <Publication: Science News>, <Publication: Science Weekly>, <Publication: The Python Journal>]>
+>>>
+>>> Article.objects.exclude(publications=p2)
+(0.001) SELECT "myapp_article"."id", "myapp_article"."headline" FROM "myapp_article" WHERE NOT (EXISTS(SELECT 1 AS "a" FROM "myapp_article_publications" U1 WHERE (U1."publication_id" = 2 AND U1."article_id" = ("myapp_article"."id")) LIMIT 1)) ORDER BY "myapp_article"."headline" ASC LIMIT 21; args=(1, 2); alias=default
+<QuerySet [<Article: Django lets you build web apps easily>]>
+>>>
+>>> p1.delete()
+(0.000) BEGIN; args=None; alias=default
+(0.014) DELETE FROM "myapp_article_publications" WHERE "myapp_article_publications"."publication_id" IN (1); args=(1,); alias=default
+(0.002) DELETE FROM "myapp_publication" WHERE "myapp_publication"."id" IN (1); args=(1,); alias=default
+(0.006) COMMIT; args=None; alias=default
+(3, {'myapp.Article_publications': 2, 'myapp.Publication': 1})
+>>>
+>>> Publication.objects.all()
+(0.004) SELECT "myapp_publication"."id", "myapp_publication"."title" FROM "myapp_publication" ORDER BY "myapp_publication"."title" ASC LIMIT 21; args=(); alias=default
+<QuerySet [<Publication: Highlights for Children>, <Publication: Science News>, <Publication: Science Weekly>]>
+>>>
+>>> a1 = Article.objects.get(pk=1)
+(0.002) SELECT "myapp_article"."id", "myapp_article"."headline" FROM "myapp_article" WHERE "myapp_article"."id" = 1 LIMIT 21; args=(1,); alias=default
+>>>
+>>> a1.publications.all()
+(0.002) SELECT "myapp_publication"."id", "myapp_publication"."title" FROM "myapp_publication" INNER JOIN "myapp_article_publications" ON ("myapp_publication"."id" = "myapp_article_publications"."publication_id") WHERE "myapp_article_publications"."article_id" = 1 ORDER BY "myapp_publication"."title" ASC LIMIT 21; args=(1,); alias=default
+<QuerySet []>
+>>>
+>>> a2.delete()
+(0.000) BEGIN; args=None; alias=default
+(0.013) DELETE FROM "myapp_article_publications" WHERE "myapp_article_publications"."article_id" IN (2); args=(2,); alias=default
+(0.002) DELETE FROM "myapp_article" WHERE "myapp_article"."id" IN (2); args=(2,); alias=default
+(0.008) COMMIT; args=None; alias=default
+(4, {'myapp.Article_publications': 3, 'myapp.Article': 1})
+>>>
+>>> Article.objects.all()
+(0.003) SELECT "myapp_article"."id", "myapp_article"."headline" FROM "myapp_article" ORDER BY "myapp_article"."headline" ASC LIMIT 21; args=(); alias=default
+<QuerySet [<Article: Django lets you build web apps easily>]>
+>>>
+>>> p2.article_set.all()
+(0.002) SELECT "myapp_article"."id", "myapp_article"."headline" FROM "myapp_article" INNER JOIN "myapp_article_publications" ON ("myapp_article"."id" = "myapp_article_publications"."article_id") WHERE "myapp_article_publications"."publication_id" = 2 ORDER BY "myapp_article"."headline" ASC LIMIT 21; args=(2,); alias=default
+<QuerySet []>
+>>>
+>>> a4 = Article(headline="NASA finds intelligent life on Earth")
+>>> a4.save()
+(0.013) INSERT INTO "myapp_article" ("headline") VALUES ('NASA finds intelligent life on Earth'); args=['NASA finds intelligent life on Earth']; alias=default
+# 使用 article_set 属性
+>>> p2.article_set.add(a4)
+(0.000) BEGIN; args=None; alias=default
+(0.015) INSERT OR IGNORE INTO "myapp_article_publications" ("article_id", "publication_id") VALUES (3, 2); args=(3, 2); alias=default
+(0.009) COMMIT; args=None; alias=default
+>>> p2.article_set.all()
+(0.004) SELECT "myapp_article"."id", "myapp_article"."headline" FROM "myapp_article" INNER JOIN "myapp_article_publications" ON ("myapp_article"."id" = "myapp_article_publications"."article_id") WHERE "myapp_article_publications"."publication_id" = 2 ORDER BY "myapp_article"."headline" ASC LIMIT 21; args=(2,); alias=default
+<QuerySet [<Article: NASA finds intelligent life on Earth>]>
+>>> a4.publications.all()
+(0.001) SELECT "myapp_publication"."id", "myapp_publication"."title" FROM "myapp_publication" INNER JOIN "myapp_article_publications" ON ("myapp_publication"."id" = "myapp_article_publications"."publication_id") WHERE "myapp_article_publications"."article_id" = 3 ORDER BY "myapp_publication"."title" ASC LIMIT 21; args=(3,); alias=default
+<QuerySet [<Publication: Science News>]>
+>>>
+
+# 使用 article_set 属性
+>>> new_article = p2.article_set.create(headline="Oxygen-free diet works wonders")
+(0.015) INSERT INTO "myapp_article" ("headline") VALUES ('Oxygen-free diet works wonders'); args=['Oxygen-free diet works wonders']; alias=default
+(0.000) BEGIN; args=None; alias=default
+(0.016) INSERT OR IGNORE INTO "myapp_article_publications" ("article_id", "publication_id") VALUES (4, 2); args=(4, 2); alias=default
+(0.006) COMMIT; args=None; alias=default
+>>> p2.article_set.all()
+(0.002) SELECT "myapp_article"."id", "myapp_article"."headline" FROM "myapp_article" INNER JOIN "myapp_article_publications" ON ("myapp_article"."id" = "myapp_article_publications"."article_id") WHERE "myapp_article_publications"."publication_id" = 2 ORDER BY "myapp_article"."headline" ASC LIMIT 21; args=(2,); alias=default
+<QuerySet [<Article: NASA finds intelligent life on Earth>, <Article: Oxygen-free diet works wonders>]>
+>>> a5 = p2.article_set.all()[1]
+(0.002) SELECT "myapp_article"."id", "myapp_article"."headline" FROM "myapp_article" INNER JOIN "myapp_article_publications" ON ("myapp_article"."id" = "myapp_article_publications"."article_id") WHERE "myapp_article_publications"."publication_id" = 2 ORDER BY "myapp_article"."headline" ASC LIMIT 1 OFFSET 1; args=(2,); alias=default
+>>> a5.publications.all()
+(0.002) SELECT "myapp_publication"."id", "myapp_publication"."title" FROM "myapp_publication" INNER JOIN "myapp_article_publications" ON ("myapp_publication"."id" = "myapp_article_publications"."publication_id") WHERE "myapp_article_publications"."article_id" = 4 ORDER BY "myapp_publication"."title" ASC LIMIT 21; args=(4,); alias=default
+<QuerySet [<Publication: Science News>]>
+>>>
+>>> a4.publications.remove(p2)
+(0.000) BEGIN; args=None; alias=default
+(0.015) DELETE FROM "myapp_article_publications" WHERE ("myapp_article_publications"."article_id" = 3 AND "myapp_article_publications"."publication_id" IN (2)); args=(3, 2); alias=default
+(0.006) COMMIT; args=None; alias=default
+>>> a4.publications.all()
+(0.004) SELECT "myapp_publication"."id", "myapp_publication"."title" FROM "myapp_publication" INNER JOIN "myapp_article_publications" ON ("myapp_publication"."id" = "myapp_article_publications"."publication_id") WHERE "myapp_article_publications"."article_id" = 3 ORDER BY "myapp_publication"."title" ASC LIMIT 21; args=(3,); alias=default
+<QuerySet []>
+>>>
+>>> p2.article_set.all()
+(0.001) SELECT "myapp_article"."id", "myapp_article"."headline" FROM "myapp_article" INNER JOIN "myapp_article_publications" ON ("myapp_article"."id" = "myapp_article_publications"."article_id") WHERE "myapp_article_publications"."publication_id" = 2 ORDER BY "myapp_article"."headline" ASC LIMIT 21; args=(2,); alias=default
+<QuerySet [<Article: Oxygen-free diet works wonders>]>
+>>>
+
+# 使用 article_set 属性
+>>> p2.article_set.remove(a5)
+(0.000) BEGIN; args=None; alias=default
+(0.015) DELETE FROM "myapp_article_publications" WHERE ("myapp_article_publications"."publication_id" = 2 AND "myapp_article_publications"."article_id" IN (4)); args=(2, 4); alias=default
+(0.006) COMMIT; args=None; alias=default
+>>> p2.article_set.all()
+(0.004) SELECT "myapp_article"."id", "myapp_article"."headline" FROM "myapp_article" INNER JOIN "myapp_article_publications" ON ("myapp_article"."id" = "myapp_article_publications"."article_id") WHERE "myapp_article_publications"."publication_id" = 2 ORDER BY "myapp_article"."headline" ASC LIMIT 21; args=(2,); alias=default
+<QuerySet []>
+>>> a5.publications.all()
+(0.001) SELECT "myapp_publication"."id", "myapp_publication"."title" FROM "myapp_publication" INNER JOIN "myapp_article_publications" ON ("myapp_publication"."id" = "myapp_article_publications"."publication_id") WHERE "myapp_article_publications"."article_id" = 4 ORDER BY "myapp_publication"."title" ASC LIMIT 21; args=(4,); alias=default
+<QuerySet []>
+>>>
+
+>>> a4.publications.all()
+(0.001) SELECT "myapp_publication"."id", "myapp_publication"."title" FROM "myapp_publication" INNER JOIN "myapp_article_publications" ON ("myapp_publication"."id" = "myapp_article_publications"."publication_id") WHERE "myapp_article_publications"."article_id" = 3 ORDER BY "myapp_publication"."title" ASC LIMIT 21; args=(3,); alias=default
+<QuerySet []>
+>>> a4.publications.set([p3])
+(0.000) BEGIN; args=None; alias=default
+(0.002) SELECT "myapp_publication"."id" FROM "myapp_publication" INNER JOIN "myapp_article_publications" ON ("myapp_publication"."id" = "myapp_article_publications"."publication_id") WHERE "myapp_article_publications"."article_id" = 3 ORDER BY "myapp_publication"."title" ASC; args=(3,); alias=default
+(0.014) INSERT OR IGNORE INTO "myapp_article_publications" ("article_id", "publication_id") VALUES (3, 3); args=(3, 3); alias=default
+(0.007) COMMIT; args=None; alias=default
+>>> a4.publications.all()
+(0.003) SELECT "myapp_publication"."id", "myapp_publication"."title" FROM "myapp_publication" INNER JOIN "myapp_article_publications" ON ("myapp_publication"."id" = "myapp_article_publications"."publication_id") WHERE "myapp_article_publications"."article_id" = 3 ORDER BY "myapp_publication"."title" ASC LIMIT 21; args=(3,); alias=default
+<QuerySet [<Publication: Science Weekly>]>
+>>>
+
+>>> p3.article_set.all()
+(0.002) SELECT "myapp_article"."id", "myapp_article"."headline" FROM "myapp_article" INNER JOIN "myapp_article_publications" ON ("myapp_article"."id" = "myapp_article_publications"."article_id") WHERE "myapp_article_publications"."publication_id" = 3 ORDER BY "myapp_article"."headline" ASC LIMIT 21; args=(3,); alias=default
+<QuerySet [<Article: NASA finds intelligent life on Earth>]>
+>>> p3.article_set.clear()
+(0.000) BEGIN; args=None; alias=default
+(0.014) DELETE FROM "myapp_article_publications" WHERE "myapp_article_publications"."publication_id" = 3; args=(3,); alias=default
+(0.006) COMMIT; args=None; alias=default
+>>> p3.article_set.all()
+(0.003) SELECT "myapp_article"."id", "myapp_article"."headline" FROM "myapp_article" INNER JOIN "myapp_article_publications" ON ("myapp_article"."id" = "myapp_article_publications"."article_id") WHERE "myapp_article_publications"."publication_id" = 3 ORDER BY "myapp_article"."headline" ASC LIMIT 21; args=(3,); alias=default
+<QuerySet []>
+>>>
+
+>>> p2.article_set.add(a4, a5)
+(0.000) BEGIN; args=None; alias=default
+(0.016) INSERT OR IGNORE INTO "myapp_article_publications" ("article_id", "publication_id") VALUES (3, 2), (4, 2); args=(3, 2, 4, 2); alias=default
+(0.008) COMMIT; args=None; alias=default
+>>> p2.article_set.all()
+(0.003) SELECT "myapp_article"."id", "myapp_article"."headline" FROM "myapp_article" INNER JOIN "myapp_article_publications" ON ("myapp_article"."id" = "myapp_article_publications"."article_id") WHERE "myapp_article_publications"."publication_id" = 2 ORDER BY "myapp_article"."headline" ASC LIMIT 21; args=(2,); alias=default
+<QuerySet [<Article: NASA finds intelligent life on Earth>, <Article: Oxygen-free diet works wonders>]>
+>>> a4.publications.all()
+(0.002) SELECT "myapp_publication"."id", "myapp_publication"."title" FROM "myapp_publication" INNER JOIN "myapp_article_publications" ON ("myapp_publication"."id" = "myapp_article_publications"."publication_id") WHERE "myapp_article_publications"."article_id" = 3 ORDER BY "myapp_publication"."title" ASC LIMIT 21; args=(3,); alias=default
+<QuerySet [<Publication: Science News>]>
+>>> a4.publications.clear()
+(0.000) BEGIN; args=None; alias=default
+(0.011) DELETE FROM "myapp_article_publications" WHERE "myapp_article_publications"."article_id" = 3; args=(3,); alias=default
+(0.006) COMMIT; args=None; alias=default
+>>> a4.publications.all()
+(0.004) SELECT "myapp_publication"."id", "myapp_publication"."title" FROM "myapp_publication" INNER JOIN "myapp_article_publications" ON ("myapp_publication"."id" = "myapp_article_publications"."publication_id") WHERE "myapp_article_publications"."article_id" = 3 ORDER BY "myapp_publication"."title" ASC LIMIT 21; args=(3,); alias=default
+<QuerySet []>
+>>> p2.article_set.all()
+(0.002) SELECT "myapp_article"."id", "myapp_article"."headline" FROM "myapp_article" INNER JOIN "myapp_article_publications" ON ("myapp_article"."id" = "myapp_article_publications"."article_id") WHERE "myapp_article_publications"."publication_id" = 2 ORDER BY "myapp_article"."headline" ASC LIMIT 21; args=(2,); alias=default
+<QuerySet [<Article: Oxygen-free diet works wonders>]>
+>>>
+>>> p1 = Publication(title="The Python Journal")
+>>> p1.save()
+(0.016) INSERT INTO "myapp_publication" ("title") VALUES ('The Python Journal'); args=['The Python Journal']; alias=default
+>>> a2 = Article(headline="NASA uses Python")
+>>> a2.save()
+(0.020) INSERT INTO "myapp_article" ("headline") VALUES ('NASA uses Python'); args=['NASA uses Python']; alias=default
+>>> a2.publications.add(p1, p2, p3)
+(0.000) BEGIN; args=None; alias=default
+(0.018) INSERT OR IGNORE INTO "myapp_article_publications" ("article_id", "publication_id") VALUES (5, 2), (5, 3), (5, 5); args=(5, 2, 5, 3, 5, 5); alias=default
+(0.006) COMMIT; args=None; alias=default
+>>> Publication.objects.filter(title__startswith="Science").delete()
+(0.003) SELECT "myapp_publication"."id", "myapp_publication"."title" FROM "myapp_publication" WHERE "myapp_publication"."title" LIKE 'Science%' ESCAPE '\'; args=('Science%',); alias=default
+(0.000) BEGIN; args=None; alias=default
+(0.015) DELETE FROM "myapp_article_publications" WHERE "myapp_article_publications"."publication_id" IN (2, 3); args=(2, 3); alias=default
+(0.002) DELETE FROM "myapp_publication" WHERE "myapp_publication"."id" IN (3, 2); args=(3, 2); alias=default
+(0.007) COMMIT; args=None; alias=default
+(5, {'myapp.Article_publications': 3, 'myapp.Publication': 2})
+>>> Publication.objects.all()
+(0.004) SELECT "myapp_publication"."id", "myapp_publication"."title" FROM "myapp_publication" ORDER BY "myapp_publication"."title" ASC LIMIT 21; args=(); alias=default
+<QuerySet [<Publication: Highlights for Children>, <Publication: The Python Journal>]>
+>>> Article.objects.all()
+(0.003) SELECT "myapp_article"."id", "myapp_article"."headline" FROM "myapp_article" ORDER BY "myapp_article"."headline" ASC LIMIT 21; args=(); alias=default
+<QuerySet [<Article: Django lets you build web apps easily>, <Article: NASA finds intelligent life on Earth>, <Article: NASA uses Python>, <Article: Oxygen-free diet works wonders>]>
+>>> a2.publications.all()
+(0.001) SELECT "myapp_publication"."id", "myapp_publication"."title" FROM "myapp_publication" INNER JOIN "myapp_article_publications" ON ("myapp_publication"."id" = "myapp_article_publications"."publication_id") WHERE "myapp_article_publications"."article_id" = 5 ORDER BY "myapp_publication"."title" ASC LIMIT 21; args=(5,); alias=default
+<QuerySet [<Publication: The Python Journal>]>
+>>>
+>>> q = Article.objects.filter(headline__startswith="Django")
+>>> q
+(0.002) SELECT "myapp_article"."id", "myapp_article"."headline" FROM "myapp_article" WHERE "myapp_article"."headline" LIKE 'Django%' ESCAPE '\' ORDER BY "myapp_article"."headline" ASC LIMIT 21; args=('Django%',); alias=default
+<QuerySet [<Article: Django lets you build web apps easily>]>
+>>> q.delete()
+(0.002) SELECT "myapp_article"."id", "myapp_article"."headline" FROM "myapp_article" WHERE "myapp_article"."headline" LIKE 'Django%' ESCAPE '\'; args=('Django%',); alias=default
+(0.000) BEGIN; args=None; alias=default
+(0.001) DELETE FROM "myapp_article_publications" WHERE "myapp_article_publications"."article_id" IN (1); args=(1,); alias=default
+(0.007) DELETE FROM "myapp_article" WHERE "myapp_article"."id" IN (1); args=(1,); alias=default
+(0.005) COMMIT; args=None; alias=default
+(1, {'myapp.Article': 1})
+>>> q
+(0.004) SELECT "myapp_article"."id", "myapp_article"."headline" FROM "myapp_article" WHERE "myapp_article"."headline" LIKE 'Django%' ESCAPE '\' ORDER BY "myapp_article"."headline" ASC LIMIT 21; args=('Django%',); alias=default
+<QuerySet []>
+>>> p1.article_set.all()
+(0.001) SELECT "myapp_article"."id", "myapp_article"."headline" FROM "myapp_article" INNER JOIN "myapp_article_publications" ON ("myapp_article"."id" = "myapp_article_publications"."article_id") WHERE "myapp_article_publications"."publication_id" = 5 ORDER BY "myapp_article"."headline" ASC LIMIT 21; args=(5,); alias=default
+<QuerySet [<Article: NASA uses Python>]>
+>>>
+
+```
+
+## [Many-to-one relationships](https://docs.djangoproject.com/en/4.2/topics/db/examples/many_to_one/)
+
+```python
+from django.db import models
+
+
+"""
+In this example, a Reporter can be associated with many Article objects, but an Article can only have one Reporter object:
+"""
+class Reporter(models.Model):
     first_name = models.CharField(max_length=30)
     last_name = models.CharField(max_length=30)
-```
+    email = models.EmailField()
 
-这里有几点需要注意：
+    def __str__(self):
+        return f"{self.first_name} {self.last_name}"
 
-1. 一个 class Person 类代表数据库中的一张表
-2. class Person 类中的类字段代表数据表中的字段
 
-要想在实际项目中正在定义出符合要求的 models 类，还需要知道如下几点：
+class Article(models.Model):
+    headline = models.CharField(max_length=100)
+    pub_date = models.DateField()
+    reporter = models.ForeignKey(Reporter, on_delete=models.CASCADE)
 
-1. models 类中支持哪些数据类型，比如上面的 models.CharField
-完整的支持字段类型参考 https://docs.djangoproject.com/en/4.2/ref/models/fields/#model-field-types
-支持的每种字段类型都分别对应数据库支持的各种数据类型，需要根据实际需要合理选择
+    def __str__(self):
+        return self.headline
 
-2. 除了需要定义字段类型，还需要定义字段选项，字段选项就是对字段做出的一些限制，比如最长允许的字符数
-完整的支持字段选项参考 https://docs.djangoproject.com/en/4.2/ref/models/fields/#common-model-field-options
+    class Meta:
+        ordering = ["headline"]
 
-3. 我们大部分时候使用的都是关系型数据库，其中最核心的就是定义数据表之间的关联关系
-Django 支持三种关联关系的定义，many-to-one, many-to-many and one-to-one
-定义关联关系的方法和定义普通字段的方法差不多，
+"""
+CREATE TABLE "myapp_article" (
+    "id" integer NOT NULL PRIMARY KEY AUTOINCREMENT,
+    "headline" varchar(100) NOT NULL,
+    "pub_date" date NOT NULL,
+    "reporter_id" bigint NOT NULL REFERENCES "myapp_reporter" ("id") DEFERRABLE INITIALLY DEFERRED
+)
 
-many-to-one 定义方法参考 https://docs.djangoproject.com/en/4.2/ref/models/fields/#django.db.models.ForeignKey
-
-many-to-many 定义方法参考 https://docs.djangoproject.com/en/4.2/ref/models/fields/#django.db.models.ManyToManyField
-
-one-to-one 定义方法参考 https://docs.djangoproject.com/en/4.2/ref/models/fields/#django.db.models.OneToOneField
-
-定义关联关系之后，怎么进行关联查询是关键，官方文档也有详细的示例参考，https://docs.djangoproject.com/en/4.2/topics/db/examples/
-
-这里说明一个小技巧：
-
-定义 models 类之后，models 类中会有一些相关属性，同时，定义表之间的关联关系也会额外产生一些属性，通过查看已经存在的属性，可以很好的理解定义是否正确，并且知道这些属性之后，对后面的查询操作也很有帮助，特别是多表之前的关联查询
-
-查看 models 类中属性的实例如下：
-
-```python
-class Question(models.Model):
-    """
-    >>> from django.db import models
-    >>> m = set(dir(models.Model))
-	# models.Model 基类属性
-    >>> m
-    {'__weakref__', '__sizeof__', '_check_model', 'validate_constraints', 'date_error_message', 'clean_fields', '_check_field_name_clashes', '__str__', '_get_pk_val', '_check_local_fields', '__lt__', '_perform_unique_checks', '_check_db_table_comment', 'refresh_from_db', '_prepare_related_fields_for_save', '__getstate__', '_perform_date_checks', '_get_next_or_previous_by_FIELD', '_get_expr_references', '_check_default_pk', 'validate_unique', '_set_pk_val', 'save_base', '__gt__', '_check_managers', 'unique_error_message', '__class__', '__repr__', '_check_ordering', '_get_unique_checks', '_check_long_column_names', '_save_table', 'check', 'get_deferred_fields', '_save_parents', 'save', '__reduce__', '__new__', 'arefresh_from_db', 'full_clean', 'pk', '__reduce_ex__', 'asave', '_check_model_name_db_lookup_clashes', '_check_fields', '__setstate__', '_check_property_name_related_field_accessor_clashes', '_check_swappable', '__ne__', '_check_constraints', '__doc__', '_check_unique_together', '__subclasshook__', '_do_update', '_get_next_or_previous_in_order', '_check_column_name_clashes', '__ge__', '__eq__', '_check_id_field', '_check_indexes', '__format__', 'adelete', '__dir__', '_get_FIELD_display', '__module__', '__dict__', '_check_m2m_through_same_relationship', '_check_index_together', '__delattr__', '_check_single_primary_key', '_do_insert', '__init_subclass__', '__le__', '__getattribute__', 'from_db', 'clean', 'get_constraints', 'serializable_value', 'prepare_database_save', 'delete', '__init__', '__setattr__', '__hash__', '_get_field_value_map'}
-    >>>
-	# 自定义 models 类之后的属性，知道这里是关键
-    >>> set(dir(Question)).difference(m)
-    {
-        'get_previous_by_pub_date',
-        '_meta',
-        'objects',
-        'question_text',
-        'id',
-        'pub_date',
-        'get_next_by_pub_date',
-        'DoesNotExist',
-        'MultipleObjectsReturned'
-    }
-    >>>
-    """
-    question_text = models.CharField(max_length=200)
-    pub_date = models.DateTimeField("date published")
+CREATE TABLE "myapp_reporter" (
+    "id" integer NOT NULL PRIMARY KEY AUTOINCREMENT,
+    "first_name" varchar(30) NOT NULL,
+    "last_name" varchar(30) NOT NULL,
+    "email" varchar(254) NOT NULL
+)
+"""
 
 ```
 
-4. 在 models 中除了定义字段和关联关系，还可选的需要定义元数据，所谓的元数据是指数据表名称，排序规则等等。
-完整的元数据定义请参考 https://docs.djangoproject.com/en/4.2/ref/models/options/
-
-
-## 对数据记录的增加，删除，修改
-
-### 增加
-
-对数据记录的增加其实就是实例化一个 models 对象，然后保存到数据库，如下所示
-
-```python
->>> from blog.models import Blog
->>> b = Blog(name="Beatles Blog", tagline="All the latest Beatles news.")
->>> b.save()
-```
-
-另一种方法是调用 create 方法，如下所示：
-
-```python
->>> from datetime import date
->>> from myapp2.models import Blog, Entry
+```bash
+root@3ba3f34d6e40:/django-tutorial-4.2/mysite# python manage.py shell
+<--""
+   Level WARNING
+************************************ manage.py ************************************
+Python 3.10.18 (main, Jul  1 2025, 05:26:33) [GCC 10.2.1 20210110] on linux
+Type "help", "copyright", "credits" or "license" for more information.
+(InteractiveConsole)
 >>>
->>> beatles = Blog.objects.create(name='Beatles Blog')
-(0.020) INSERT INTO "myapp2_blog" ("name", "tagline") VALUES ('Beatles Blog', ''); args=['Beatles Blog', '']; alias=default
+>>>
+>>> from myapp.models import Reporter, Article
+>>>
+>>> r = Reporter(first_name="John", last_name="Smith", email="john@example.com")
+>>> r.save()
+(0.017) INSERT INTO "myapp_reporter" ("first_name", "last_name", "email") VALUES ('John', 'Smith', 'john@example.com'); args=['John', 'Smith', 'john@example.com']; alias=default
+>>>
+>>> r2 = Reporter(first_name="Paul", last_name="Jones", email="paul@example.com")
+>>> r2.save()
+(0.020) INSERT INTO "myapp_reporter" ("first_name", "last_name", "email") VALUES ('Paul', 'Jones', 'paul@example.com'); args=['Paul', 'Jones', 'paul@example.com']; alias=default
+>>>
+>>> from datetime import date
+>>> a = Article(id=None, headline="This is a test", pub_date=date(2005, 7, 27), reporter=r)
+>>> a.save()
+(0.023) INSERT INTO "myapp_article" ("headline", "pub_date", "reporter_id") VALUES ('This is a test', '2005-07-27', 1); args=['This is a test', '2005-07-27', 1]; alias=default
+>>> a.reporter.id
+1
+>>> a.reporter
+<Reporter: John Smith>
+>>>
+
+>>> dir(Reporter)
+['DoesNotExist', 'MultipleObjectsReturned', '__class__', '__delattr__', '__dict__', '__dir__', '__doc__', '__eq__', '__format__', '__ge__', '__getattribute__', '__getstate__', '__gt__', '__hash__', '__init__', '__init_subclass__', '__le__', '__lt__', '__module__', '__ne__', '__new__', '__reduce__', '__reduce_ex__', '__repr__', '__setattr__', '__setstate__', '__sizeof__', '__str__', '__subclasshook__', '__weakref__', '_check_column_name_clashes', '_check_constraints', '_check_db_table_comment', '_check_default_pk', '_check_field_name_clashes', '_check_fields', '_check_id_field', '_check_index_together', '_check_indexes', '_check_local_fields', '_check_long_column_names', '_check_m2m_through_same_relationship', '_check_managers', '_check_model', '_check_model_name_db_lookup_clashes', '_check_ordering', '_check_property_name_related_field_accessor_clashes', '_check_single_primary_key', '_check_swappable', '_check_unique_together', '_do_insert', '_do_update', '_get_FIELD_display', '_get_expr_references', '_get_field_value_map', '_get_next_or_previous_by_FIELD', '_get_next_or_previous_in_order', '_get_pk_val', '_get_unique_checks', '_meta', '_perform_date_checks', '_perform_unique_checks', '_prepare_related_fields_for_save', '_save_parents', '_save_table', '_set_pk_val', 'adelete', 'arefresh_from_db', 'article_set', 'asave', 'check', 'clean', 'clean_fields', 'date_error_message', 'delete', 'email', 'first_name', 'from_db', 'full_clean', 'get_constraints', 'get_deferred_fields', 'id', 'last_name', 'objects', 'pk', 'prepare_database_save', 'refresh_from_db', 'save', 'save_base', 'serializable_value', 'unique_error_message', 'validate_constraints', 'validate_unique']
+>>>
+>>> dir(r)
+[
+    'DoesNotExist',
+    'MultipleObjectsReturned',
+    '__class__',
+    '__delattr__',
+    '__dict__',
+    '__dir__',
+    '__doc__',
+    '__eq__',
+    '__format__',
+    '__ge__',
+    '__getattribute__',
+    '__getstate__',
+    '__gt__',
+    '__hash__',
+    '__init__',
+    '__init_subclass__',
+    '__le__',
+    '__lt__',
+    '__module__',
+    '__ne__',
+    '__new__',
+    '__reduce__',
+    '__reduce_ex__',
+    '__repr__',
+    '__setattr__',
+    '__setstate__',
+    '__sizeof__',
+    '__str__',
+    '__subclasshook__',
+    '__weakref__',
+    '_check_column_name_clashes',
+    '_check_constraints',
+    '_check_db_table_comment',
+    '_check_default_pk',
+    '_check_field_name_clashes',
+    '_check_fields',
+    '_check_id_field',
+    '_check_index_together',
+    '_check_indexes',
+    '_check_local_fields',
+    '_check_long_column_names',
+    '_check_m2m_through_same_relationship',
+    '_check_managers',
+    '_check_model',
+    '_check_model_name_db_lookup_clashes',
+    '_check_ordering',
+    '_check_property_name_related_field_accessor_clashes',
+    '_check_single_primary_key',
+    '_check_swappable',
+    '_check_unique_together',
+    '_do_insert',
+    '_do_update',
+    '_get_FIELD_display',
+    '_get_expr_references',
+    '_get_field_value_map',
+    '_get_next_or_previous_by_FIELD',
+    '_get_next_or_previous_in_order',
+    '_get_pk_val',
+    '_get_unique_checks',
+    '_meta',
+    '_perform_date_checks',
+    '_perform_unique_checks',
+    '_prepare_related_fields_for_save',
+    '_save_parents',
+    '_save_table',
+    '_set_pk_val',
+    '_state',  # 多了这个属性
+    'adelete',
+    'arefresh_from_db',
+    'article_set',
+    'asave',
+    'check',
+    'clean',
+    'clean_fields',
+    'date_error_message',
+    'delete',
+    'email',
+    'first_name',
+    'from_db',
+    'full_clean',
+    'get_constraints',
+    'get_deferred_fields',
+    'id',
+    'last_name',
+    'objects',
+    'pk',
+    'prepare_database_save',
+    'refresh_from_db',
+    'save',
+    'save_base',
+    'serializable_value',
+    'unique_error_message',
+    'validate_constraints',
+    'validate_unique'
+]
+>>>
+>>> dir(Article)
+['DoesNotExist', 'MultipleObjectsReturned', '__class__', '__delattr__', '__dict__', '__dir__', '__doc__', '__eq__', '__format__', '__ge__', '__getattribute__', '__getstate__', '__gt__', '__hash__', '__init__', '__init_subclass__', '__le__', '__lt__', '__module__', '__ne__', '__new__', '__reduce__', '__reduce_ex__', '__repr__', '__setattr__', '__setstate__', '__sizeof__', '__str__', '__subclasshook__', '__weakref__', '_check_column_name_clashes', '_check_constraints', '_check_db_table_comment', '_check_default_pk', '_check_field_name_clashes', '_check_fields', '_check_id_field', '_check_index_together', '_check_indexes', '_check_local_fields', '_check_long_column_names', '_check_m2m_through_same_relationship', '_check_managers', '_check_model', '_check_model_name_db_lookup_clashes', '_check_ordering', '_check_property_name_related_field_accessor_clashes', '_check_single_primary_key', '_check_swappable', '_check_unique_together', '_do_insert', '_do_update', '_get_FIELD_display', '_get_expr_references', '_get_field_value_map', '_get_next_or_previous_by_FIELD', '_get_next_or_previous_in_order', '_get_pk_val', '_get_unique_checks', '_meta', '_perform_date_checks', '_perform_unique_checks', '_prepare_related_fields_for_save', '_save_parents', '_save_table', '_set_pk_val', 'adelete', 'arefresh_from_db', 'asave', 'check', 'clean', 'clean_fields', 'date_error_message', 'delete', 'from_db', 'full_clean', 'get_constraints', 'get_deferred_fields', 'get_next_by_pub_date', 'get_previous_by_pub_date', 'headline', 'id', 'objects', 'pk', 'prepare_database_save', 'pub_date', 'refresh_from_db', 'reporter', 'reporter_id', 'save', 'save_base', 'serializable_value', 'unique_error_message', 'validate_constraints', 'validate_unique']
+>>>
+>>> dir(a)
+[
+    'DoesNotExist',
+    'MultipleObjectsReturned',
+    '__class__',
+    '__delattr__',
+    '__dict__',
+    '__dir__',
+    '__doc__',
+    '__eq__',
+    '__format__',
+    '__ge__',
+    '__getattribute__',
+    '__getstate__',
+    '__gt__',
+    '__hash__',
+    '__init__',
+    '__init_subclass__',
+    '__le__',
+    '__lt__',
+    '__module__',
+    '__ne__',
+    '__new__',
+    '__reduce__',
+    '__reduce_ex__',
+    '__repr__',
+    '__setattr__',
+    '__setstate__',
+    '__sizeof__',
+    '__str__',
+    '__subclasshook__',
+    '__weakref__',
+    '_check_column_name_clashes',
+    '_check_constraints',
+    '_check_db_table_comment',
+    '_check_default_pk',
+    '_check_field_name_clashes',
+    '_check_fields',
+    '_check_id_field',
+    '_check_index_together',
+    '_check_indexes',
+    '_check_local_fields',
+    '_check_long_column_names',
+    '_check_m2m_through_same_relationship',
+    '_check_managers',
+    '_check_model',
+    '_check_model_name_db_lookup_clashes',
+    '_check_ordering',
+    '_check_property_name_related_field_accessor_clashes',
+    '_check_single_primary_key',
+    '_check_swappable',
+    '_check_unique_together',
+    '_do_insert',
+    '_do_update',
+    '_get_FIELD_display',
+    '_get_expr_references',
+    '_get_field_value_map',
+    '_get_next_or_previous_by_FIELD',
+    '_get_next_or_previous_in_order',
+    '_get_pk_val',
+    '_get_unique_checks',
+    '_meta',
+    '_perform_date_checks',
+    '_perform_unique_checks',
+    '_prepare_related_fields_for_save',
+    '_save_parents',
+    '_save_table',
+    '_set_pk_val',
+    '_state',  # 多了这个属性
+    'adelete',
+    'arefresh_from_db',
+    'asave',
+    'check',
+    'clean',
+    'clean_fields',
+    'date_error_message',
+    'delete',
+    'from_db',
+    'full_clean',
+    'get_constraints',
+    'get_deferred_fields',
+    'get_next_by_pub_date',
+    'get_previous_by_pub_date',
+    'headline',
+    'id',
+    'objects',
+    'pk',
+    'prepare_database_save',
+    'pub_date',
+    'refresh_from_db',
+    'reporter',
+    'reporter_id',
+    'save',
+    'save_base',
+    'serializable_value',
+    'unique_error_message',
+    'validate_constraints',
+    'validate_unique'
+]
+>>>
+
+>>> r3 = Reporter(first_name="John", last_name="Smith", email="john@example.com")
+>>> Article.objects.create(headline="This is a test", pub_date=date(2005, 7, 27), reporter=r3)
+Traceback (most recent call last):
+  File "<console>", line 1, in <module>
+  File "/usr/local/lib/python3.10/site-packages/django/db/models/manager.py", line 87, in manager_method
+    return getattr(self.get_queryset(), name)(*args, **kwargs)
+  File "/usr/local/lib/python3.10/site-packages/django/db/models/query.py", line 658, in create
+    obj.save(force_insert=True, using=self.db)
+  File "/usr/local/lib/python3.10/site-packages/django/db/models/base.py", line 778, in save
+    self._prepare_related_fields_for_save(operation_name="save")
+  File "/usr/local/lib/python3.10/site-packages/django/db/models/base.py", line 1093, in _prepare_related_fields_for_save
+    raise ValueError(
+ValueError: save() prohibited to prevent data loss due to unsaved related object 'reporter'.
+>>>
+
+>>> r = a.reporter
+>>> new_article = r.article_set.create(headline="John's second story", pub_date=date(2005, 7, 29))
+(0.020) INSERT INTO "myapp_article" ("headline", "pub_date", "reporter_id") VALUES ('John''s second story', '2005-07-29', 1); args=["John's second story", '2005-07-29', 1]; alias=default
+>>> new_article
+<Article: John's second story>
+>>> new_article.reporter
+<Reporter: John Smith>
+>>> new_article.reporter.id
+1
+>>>
+
+>>> new_article2 = Article.objects.create( headline="Paul's story", pub_date=date(2006, 1, 17), reporter=r)
+(0.019) INSERT INTO "myapp_article" ("headline", "pub_date", "reporter_id") VALUES ('Paul''s story', '2006-01-17', 1); args=["Paul's story", '2006-01-17', 1]; alias=default
+>>> new_article2.reporter
+<Reporter: John Smith>
+>>> new_article2.reporter.id
+1
+>>> r.article_set.all()
+(0.003) SELECT "myapp_article"."id", "myapp_article"."headline", "myapp_article"."pub_date", "myapp_article"."reporter_id" FROM "myapp_article" WHERE "myapp_article"."reporter_id" = 1 ORDER BY "myapp_article"."headline" ASC LIMIT 21; args=(1,); alias=default
+<QuerySet [<Article: John's second story>, <Article: Paul's story>, <Article: This is a test>]>
+>>>
+
+>>> r2.article_set.add(new_article2)
+(0.017) UPDATE "myapp_article" SET "reporter_id" = 2 WHERE "myapp_article"."id" IN (3); args=(2, 3); alias=default
+>>> new_article2.reporter.id
+2
+>>> new_article2.reporter
+<Reporter: Paul Jones>
+>>>
+>>>
+>>> r.article_set.all()
+(0.004) SELECT "myapp_article"."id", "myapp_article"."headline", "myapp_article"."pub_date", "myapp_article"."reporter_id" FROM "myapp_article" WHERE "myapp_article"."reporter_id" = 1 ORDER BY "myapp_article"."headline" ASC LIMIT 21; args=(1,); alias=default
+<QuerySet [<Article: John's second story>, <Article: This is a test>]>
+>>> r2.article_set.all()
+(0.001) SELECT "myapp_article"."id", "myapp_article"."headline", "myapp_article"."pub_date", "myapp_article"."reporter_id" FROM "myapp_article" WHERE "myapp_article"."reporter_id" = 2 ORDER BY "myapp_article"."headline" ASC LIMIT 21; args=(2,); alias=default
+<QuerySet [<Article: Paul's story>]>
+>>> r.article_set.count()
+(0.001) SELECT COUNT(*) AS "__count" FROM "myapp_article" WHERE "myapp_article"."reporter_id" = 1; args=(1,); alias=default
+2
+>>> r2.article_set.count()
+(0.002) SELECT COUNT(*) AS "__count" FROM "myapp_article" WHERE "myapp_article"."reporter_id" = 2; args=(2,); alias=default
+1
+>>>
+
+>>> r.article_set.filter(headline__startswith="This")
+(0.002) SELECT "myapp_article"."id", "myapp_article"."headline", "myapp_article"."pub_date", "myapp_article"."reporter_id" FROM "myapp_article" WHERE ("myapp_article"."reporter_id" = 1 AND "myapp_article"."headline" LIKE 'This%' ESCAPE '\') ORDER BY "myapp_article"."headline" ASC LIMIT 21; args=(1, 'This%'); alias=default
+<QuerySet [<Article: This is a test>]>
+>>>
+>>> Article.objects.filter(reporter__first_name="John")
+(0.001) SELECT "myapp_article"."id", "myapp_article"."headline", "myapp_article"."pub_date", "myapp_article"."reporter_id" FROM "myapp_article" INNER JOIN "myapp_reporter" ON ("myapp_article"."reporter_id" = "myapp_reporter"."id") WHERE "myapp_reporter"."first_name" = 'John' ORDER BY "myapp_article"."headline" ASC LIMIT 21; args=('John',); alias=default
+<QuerySet [<Article: John's second story>, <Article: This is a test>]>
+>>>
+
+>>> Article.objects.filter(reporter__first_name="John")
+(0.001) SELECT "myapp_article"."id", "myapp_article"."headline", "myapp_article"."pub_date", "myapp_article"."reporter_id" FROM "myapp_article" INNER JOIN "myapp_reporter" ON ("myapp_article"."reporter_id" = "myapp_reporter"."id") WHERE "myapp_reporter"."first_name" = 'John' ORDER BY "myapp_article"."headline" ASC LIMIT 21; args=('John',); alias=default
+<QuerySet [<Article: John's second story>, <Article: This is a test>]>
+>>> Article.objects.filter(reporter__first_name="John", reporter__last_name="Smith")
+(0.002) SELECT "myapp_article"."id", "myapp_article"."headline", "myapp_article"."pub_date", "myapp_article"."reporter_id" FROM "myapp_article" INNER JOIN "myapp_reporter" ON ("myapp_article"."reporter_id" = "myapp_reporter"."id") WHERE ("myapp_reporter"."first_name" = 'John' AND "myapp_reporter"."last_name" = 'Smith') ORDER BY "myapp_article"."headline" ASC LIMIT 21; args=('John', 'Smith'); alias=default
+<QuerySet [<Article: John's second story>, <Article: This is a test>]>
+>>>
+
+>>> Article.objects.filter(reporter__pk=1)
+(0.002) SELECT "myapp_article"."id", "myapp_article"."headline", "myapp_article"."pub_date", "myapp_article"."reporter_id" FROM "myapp_article" WHERE "myapp_article"."reporter_id" = 1 ORDER BY "myapp_article"."headline" ASC LIMIT 21; args=(1,); alias=default
+<QuerySet [<Article: John's second story>, <Article: This is a test>]>
+>>> Article.objects.filter(reporter=1)
+(0.001) SELECT "myapp_article"."id", "myapp_article"."headline", "myapp_article"."pub_date", "myapp_article"."reporter_id" FROM "myapp_article" WHERE "myapp_article"."reporter_id" = 1 ORDER BY "myapp_article"."headline" ASC LIMIT 21; args=(1,); alias=default
+<QuerySet [<Article: John's second story>, <Article: This is a test>]>
+>>> Article.objects.filter(reporter=r)
+(0.001) SELECT "myapp_article"."id", "myapp_article"."headline", "myapp_article"."pub_date", "myapp_article"."reporter_id" FROM "myapp_article" WHERE "myapp_article"."reporter_id" = 1 ORDER BY "myapp_article"."headline" ASC LIMIT 21; args=(1,); alias=default
+<QuerySet [<Article: John's second story>, <Article: This is a test>]>
+>>> Article.objects.filter(reporter__in=[1, 2]).distinct()
+(0.001) SELECT DISTINCT "myapp_article"."id", "myapp_article"."headline", "myapp_article"."pub_date", "myapp_article"."reporter_id" FROM "myapp_article" WHERE "myapp_article"."reporter_id" IN (1, 2) ORDER BY "myapp_article"."headline" ASC LIMIT 21; args=(1, 2); alias=default
+<QuerySet [<Article: John's second story>, <Article: Paul's story>, <Article: This is a test>]>
+>>> Article.objects.filter(reporter__in=[r, r2]).distinct()
+(0.001) SELECT DISTINCT "myapp_article"."id", "myapp_article"."headline", "myapp_article"."pub_date", "myapp_article"."reporter_id" FROM "myapp_article" WHERE "myapp_article"."reporter_id" IN (1, 2) ORDER BY "myapp_article"."headline" ASC LIMIT 21; args=(1, 2); alias=default
+<QuerySet [<Article: John's second story>, <Article: Paul's story>, <Article: This is a test>]>
+>>> Article.objects.filter(reporter__in=Reporter.objects.filter(first_name="John")).distinct()
+(0.002) SELECT DISTINCT "myapp_article"."id", "myapp_article"."headline", "myapp_article"."pub_date", "myapp_article"."reporter_id" FROM "myapp_article" WHERE "myapp_article"."reporter_id" IN (SELECT U0."id" FROM "myapp_reporter" U0 WHERE U0."first_name" = 'John') ORDER BY "myapp_article"."headline" ASC LIMIT 21; args=('John',); alias=default
+<QuerySet [<Article: John's second story>, <Article: This is a test>]>
+>>>
+
+>>> Reporter.objects.filter(article__pk=1)
+(0.002) SELECT "myapp_reporter"."id", "myapp_reporter"."first_name", "myapp_reporter"."last_name", "myapp_reporter"."email" FROM "myapp_reporter" INNER JOIN "myapp_article" ON ("myapp_reporter"."id" = "myapp_article"."reporter_id") WHERE "myapp_article"."id" = 1 LIMIT 21; args=(1,); alias=default
+<QuerySet [<Reporter: John Smith>]>
+>>> Reporter.objects.filter(article=1)
+(0.001) SELECT "myapp_reporter"."id", "myapp_reporter"."first_name", "myapp_reporter"."last_name", "myapp_reporter"."email" FROM "myapp_reporter" INNER JOIN "myapp_article" ON ("myapp_reporter"."id" = "myapp_article"."reporter_id") WHERE "myapp_article"."id" = 1 LIMIT 21; args=(1,); alias=default
+<QuerySet [<Reporter: John Smith>]>
+>>> Reporter.objects.filter(article=a)
+(0.001) SELECT "myapp_reporter"."id", "myapp_reporter"."first_name", "myapp_reporter"."last_name", "myapp_reporter"."email" FROM "myapp_reporter" INNER JOIN "myapp_article" ON ("myapp_reporter"."id" = "myapp_article"."reporter_id") WHERE "myapp_article"."id" = 1 LIMIT 21; args=(1,); alias=default
+<QuerySet [<Reporter: John Smith>]>
+>>> Reporter.objects.filter(article__headline__startswith="This")
+(0.001) SELECT "myapp_reporter"."id", "myapp_reporter"."first_name", "myapp_reporter"."last_name", "myapp_reporter"."email" FROM "myapp_reporter" INNER JOIN "myapp_article" ON ("myapp_reporter"."id" = "myapp_article"."reporter_id") WHERE "myapp_article"."headline" LIKE 'This%' ESCAPE '\' LIMIT 21; args=('This%',); alias=default
+<QuerySet [<Reporter: John Smith>]>
+>>> Reporter.objects.filter(article__headline__startswith="This").distinct()
+(0.001) SELECT DISTINCT "myapp_reporter"."id", "myapp_reporter"."first_name", "myapp_reporter"."last_name", "myapp_reporter"."email" FROM "myapp_reporter" INNER JOIN "myapp_article" ON ("myapp_reporter"."id" = "myapp_article"."reporter_id") WHERE "myapp_article"."headline" LIKE 'This%' ESCAPE '\' LIMIT 21; args=('This%',); alias=default
+<QuerySet [<Reporter: John Smith>]>
+>>> Reporter.objects.filter(article__headline__startswith="This").count()
+(0.001) SELECT COUNT(*) AS "__count" FROM "myapp_reporter" INNER JOIN "myapp_article" ON ("myapp_reporter"."id" = "myapp_article"."reporter_id") WHERE "myapp_article"."headline" LIKE 'This%' ESCAPE '\'; args=('This%',); alias=default
+1
+>>> Reporter.objects.filter(article__headline__startswith="This").distinct().count()
+(0.002) SELECT COUNT(*) FROM (SELECT DISTINCT "myapp_reporter"."id" AS "col1", "myapp_reporter"."first_name" AS "col2", "myapp_reporter"."last_name" AS "col3", "myapp_reporter"."email" AS "col4" FROM "myapp_reporter" INNER JOIN "myapp_article" ON ("myapp_reporter"."id" = "myapp_article"."reporter_id") WHERE "myapp_article"."headline" LIKE 'This%' ESCAPE '\') subquery; args=('This%',); alias=default
+1
+>>>
+
+>>> Reporter.objects.filter(article__reporter__first_name__startswith="John")
+(0.002) SELECT "myapp_reporter"."id", "myapp_reporter"."first_name", "myapp_reporter"."last_name", "myapp_reporter"."email" FROM "myapp_reporter" INNER JOIN "myapp_article" ON ("myapp_reporter"."id" = "myapp_article"."reporter_id") INNER JOIN "myapp_reporter" T3 ON ("myapp_article"."reporter_id" = T3."id") WHERE T3."first_name" LIKE 'John%' ESCAPE '\' LIMIT 21; args=('John%',); alias=default
+<QuerySet [<Reporter: John Smith>, <Reporter: John Smith>]>
+>>> Reporter.objects.filter(article__reporter__first_name__startswith="John").distinct()
+(0.001) SELECT DISTINCT "myapp_reporter"."id", "myapp_reporter"."first_name", "myapp_reporter"."last_name", "myapp_reporter"."email" FROM "myapp_reporter" INNER JOIN "myapp_article" ON ("myapp_reporter"."id" = "myapp_article"."reporter_id") INNER JOIN "myapp_reporter" T3 ON ("myapp_article"."reporter_id" = T3."id") WHERE T3."first_name" LIKE 'John%' ESCAPE '\' LIMIT 21; args=('John%',); alias=default
+<QuerySet [<Reporter: John Smith>]>
+>>> Reporter.objects.filter(article__reporter=r).distinct()
+(0.002) SELECT DISTINCT "myapp_reporter"."id", "myapp_reporter"."first_name", "myapp_reporter"."last_name", "myapp_reporter"."email" FROM "myapp_reporter" INNER JOIN "myapp_article" ON ("myapp_reporter"."id" = "myapp_article"."reporter_id") WHERE "myapp_article"."reporter_id" = 1 LIMIT 21; args=(1,); alias=default
+<QuerySet [<Reporter: John Smith>]>
+>>>
+
+>>> Article.objects.all()
+(0.002) SELECT "myapp_article"."id", "myapp_article"."headline", "myapp_article"."pub_date", "myapp_article"."reporter_id" FROM "myapp_article" ORDER BY "myapp_article"."headline" ASC LIMIT 21; args=(); alias=default
+<QuerySet [<Article: John's second story>, <Article: Paul's story>, <Article: This is a test>]>
+>>> Reporter.objects.order_by("first_name")
+(0.001) SELECT "myapp_reporter"."id", "myapp_reporter"."first_name", "myapp_reporter"."last_name", "myapp_reporter"."email" FROM "myapp_reporter" ORDER BY "myapp_reporter"."first_name" ASC LIMIT 21; args=(); alias=default
+<QuerySet [<Reporter: John Smith>, <Reporter: Paul Jones>]>
+>>> r2.delete()
+(0.000) BEGIN; args=None; alias=default
+(0.009) DELETE FROM "myapp_article" WHERE "myapp_article"."reporter_id" IN (2); args=(2,); alias=default
+(0.002) DELETE FROM "myapp_reporter" WHERE "myapp_reporter"."id" IN (2); args=(2,); alias=default
+(0.006) COMMIT; args=None; alias=default
+(2, {'myapp.Article': 1, 'myapp.Reporter': 1})
+>>> Article.objects.all()
+(0.003) SELECT "myapp_article"."id", "myapp_article"."headline", "myapp_article"."pub_date", "myapp_article"."reporter_id" FROM "myapp_article" ORDER BY "myapp_article"."headline" ASC LIMIT 21; args=(); alias=default
+<QuerySet [<Article: John's second story>, <Article: This is a test>]>
+>>> Reporter.objects.order_by("first_name")
+(0.002) SELECT "myapp_reporter"."id", "myapp_reporter"."first_name", "myapp_reporter"."last_name", "myapp_reporter"."email" FROM "myapp_reporter" ORDER BY "myapp_reporter"."first_name" ASC LIMIT 21; args=(); alias=default
+<QuerySet [<Reporter: John Smith>]>
+>>>
+
+>>> Reporter.objects.filter(article__headline__startswith="This").delete()
+(0.002) SELECT "myapp_reporter"."id", "myapp_reporter"."first_name", "myapp_reporter"."last_name", "myapp_reporter"."email" FROM "myapp_reporter" INNER JOIN "myapp_article" ON ("myapp_reporter"."id" = "myapp_article"."reporter_id") WHERE "myapp_article"."headline" LIKE 'This%' ESCAPE '\'; args=('This%',); alias=default
+(0.000) BEGIN; args=None; alias=default
+(0.009) DELETE FROM "myapp_article" WHERE "myapp_article"."reporter_id" IN (1); args=(1,); alias=default
+(0.002) DELETE FROM "myapp_reporter" WHERE "myapp_reporter"."id" IN (1); args=(1,); alias=default
+(0.006) COMMIT; args=None; alias=default
+(3, {'myapp.Article': 2, 'myapp.Reporter': 1})
+>>> Reporter.objects.all()
+(0.003) SELECT "myapp_reporter"."id", "myapp_reporter"."first_name", "myapp_reporter"."last_name", "myapp_reporter"."email" FROM "myapp_reporter" LIMIT 21; args=(); alias=default
+<QuerySet []>
+>>> Article.objects.all()
+(0.003) SELECT "myapp_article"."id", "myapp_article"."headline", "myapp_article"."pub_date", "myapp_article"."reporter_id" FROM "myapp_article" ORDER BY "myapp_article"."headline" ASC LIMIT 21; args=(); alias=default
+<QuerySet []>
+>>>
 
 ```
 
-一般来说，将数据保存到数据库就是使用 `save()` 或者 `create()` 方法
-
-### 修改和删除
-
-对数据的修改和删除，最关键的逻辑是需要先查询或者获取数据，查询到相关数据之后，
-
-对于修改操作，可以调用 `save()` 或者 `update()` 方法，示例如下：
-
+## [One-to-one relationships](https://docs.djangoproject.com/en/4.2/topics/db/examples/one_to_one/)
 
 ```python
->>> b5.name = "New name"
->>> b5.save()
+from django.db import models
 
->>> Entry.objects.filter(pub_date__year=2007).update(headline="Everything is the same")
 
-```
+class Place(models.Model):
+    name = models.CharField(max_length=50)
+    address = models.CharField(max_length=80)
 
-对于删除操作，可以调用 `delete()` 方法，示例如下：
+    def __str__(self):
+        return f"{self.name} the place"
 
-```python
->>> b = Blog.objects.get(pk=1)
->>> b.delete()
 
-```
+class Restaurant(models.Model):
+    place = models.OneToOneField(
+        Place,
+        on_delete=models.CASCADE,
+        primary_key=True,
+    )
+    serves_hot_dogs = models.BooleanField(default=False)
+    serves_pizza = models.BooleanField(default=False)
 
-## 对数据记录的查询
+    def __str__(self):
+        return "%s the restaurant" % self.place.name
 
-对数据库的查询是重中之重，为了充分理解 django models 最终执行的查询操作，需要时刻查看上面的日志，看最终的 SQL 语句是否符合要求。
 
-总体来说，使用 django models 进行查询有三个核心要点：
+class Waiter(models.Model):
+    restaurant = models.ForeignKey(Restaurant, on_delete=models.CASCADE)
+    name = models.CharField(max_length=50)
 
-1. 定义 django models 之后，modles 类中会自动注入一个 `object` 属性
-`object` 属性是一个 `Managers` 类的实例，`Managers` 类提供了一些方法用于查询操作
+    def __str__(self):
+        return "%s the waiter at %s" % (self.name, self.restaurant)
 
-`Managers` 类提供的查询方法基本都会返回 `QuerySet` 对象，最终我们的数据都封装在 `QuerySet` 对象中
+"""
+CREATE TABLE "myapp_place" (
+    "id" integer NOT NULL PRIMARY KEY AUTOINCREMENT,
+    "name" varchar(50) NOT NULL,
+    "address" varchar(80) NOT NULL
+)
 
-```python
->>> Blog.objects
-<django.db.models.manager.Manager object at ...>
+CREATE TABLE "myapp_restaurant" (
+    "place_id" bigint NOT NULL PRIMARY KEY REFERENCES "myapp_place" ("id") DEFERRABLE INITIALLY DEFERRED,
+    "serves_hot_dogs" bool NOT NULL,
+    "serves_pizza" bool NOT NULL
+)
 
->>> all_entries = Entry.objects.all()
-```
-
-2. 对于查询来说，最重要的就是 `Managers` 对象中的 `filter()`、`F()`、`Q()` 三个方法
-
-filter() 用于构建查询条件，类似 SQL 语句中的 where 条件语句
-
-F() 方法用于引用数据字段，引用的数据字段用于 filter() 参数
-
-Q() 方法用于构建复杂的条件查询，查询条件也用于 filter() 参数
-
-3. 如上所述，查询最重要的就是构建查询条件
-在 django models 中构建查询条件采用了一种独特的格式
-
-`field__lookuptype=value`
-
-field 表示 models 中的字段
-
-lookuptype 表示查询类型，中间使用双下划线
-
-例如
-
-```python
->>> Entry.objects.filter(pub_date__lte="2006-01-01")
-translates (roughly) into the following SQL:
-
-SELECT * FROM blog_entry WHERE pub_date <= '2006-01-01';
+CREATE TABLE "myapp_waiter" (
+    "id" integer NOT NULL PRIMARY KEY AUTOINCREMENT,
+    "name" varchar(50) NOT NULL,
+    "restaurant_id" bigint NOT NULL REFERENCES "myapp_restaurant" ("place_id") DEFERRABLE INITIALLY DEFERRED
+)
+"""
 
 ```
 
-pub_date 表示 models 中的字段
+```bash
+root@3ba3f34d6e40:/django-tutorial-4.2/mysite# python manage.py shell
+<--""
+   Level WARNING
+************************************ manage.py ************************************
+Python 3.10.18 (main, Jul  1 2025, 05:26:33) [GCC 10.2.1 20210110] on linux
+Type "help", "copyright", "credits" or "license" for more information.
+(InteractiveConsole)
+>>> from myapp.models import Place, Restaurant, Waiter
+>>>
+>>> p1 = Place(name="Demon Dogs", address="944 W. Fullerton")
+>>> p1.save()
+(0.020) INSERT INTO "myapp_place" ("name", "address") VALUES ('Demon Dogs', '944 W. Fullerton'); args=['Demon Dogs', '944 W. Fullerton']; alias=default
+>>> p2 = Place(name="Ace Hardware", address="1013 N. Ashland")
+>>> p2.save()
+(0.016) INSERT INTO "myapp_place" ("name", "address") VALUES ('Ace Hardware', '1013 N. Ashland'); args=['Ace Hardware', '1013 N. Ashland']; alias=default
+>>>
+>>> r = Restaurant(place=p1, serves_hot_dogs=True, serves_pizza=False)
+>>> r.save()
+(0.004) UPDATE "myapp_restaurant" SET "serves_hot_dogs" = 1, "serves_pizza" = 0 WHERE "myapp_restaurant"."place_id" = 1; args=(True, False, 1); alias=default
+(0.017) INSERT INTO "myapp_restaurant" ("place_id", "serves_hot_dogs", "serves_pizza") VALUES (1, 1, 0); args=(1, True, False); alias=default
+>>>
 
-lte 表示小于等于
+>>> dir(Place)
+['DoesNotExist', 'MultipleObjectsReturned', '__class__', '__delattr__', '__dict__', '__dir__', '__doc__', '__eq__', '__format__', '__ge__', '__getattribute__', '__getstate__', '__gt__', '__hash__', '__init__', '__init_subclass__', '__le__', '__lt__', '__module__', '__ne__', '__new__', '__reduce__', '__reduce_ex__', '__repr__', '__setattr__', '__setstate__', '__sizeof__', '__str__', '__subclasshook__', '__weakref__', '_check_column_name_clashes', '_check_constraints', '_check_db_table_comment', '_check_default_pk', '_check_field_name_clashes', '_check_fields', '_check_id_field', '_check_index_together', '_check_indexes', '_check_local_fields', '_check_long_column_names', '_check_m2m_through_same_relationship', '_check_managers', '_check_model', '_check_model_name_db_lookup_clashes', '_check_ordering', '_check_property_name_related_field_accessor_clashes', '_check_single_primary_key', '_check_swappable', '_check_unique_together', '_do_insert', '_do_update', '_get_FIELD_display', '_get_expr_references', '_get_field_value_map', '_get_next_or_previous_by_FIELD', '_get_next_or_previous_in_order', '_get_pk_val', '_get_unique_checks', '_meta', '_perform_date_checks', '_perform_unique_checks', '_prepare_related_fields_for_save', '_save_parents', '_save_table', '_set_pk_val', 'address', 'adelete', 'arefresh_from_db', 'asave', 'check', 'clean', 'clean_fields', 'date_error_message', 'delete', 'from_db', 'full_clean', 'get_constraints', 'get_deferred_fields', 'id', 'name', 'objects', 'pk', 'prepare_database_save', 'refresh_from_db', 'restaurant', 'save', 'save_base', 'serializable_value', 'unique_error_message', 'validate_constraints', 'validate_unique']
+>>> dir(p1)
+[
+    'DoesNotExist',
+    'MultipleObjectsReturned',
+    '__class__',
+    '__delattr__',
+    '__dict__',
+    '__dir__',
+    '__doc__',
+    '__eq__',
+    '__format__',
+    '__ge__',
+    '__getattribute__',
+    '__getstate__',
+    '__gt__',
+    '__hash__',
+    '__init__',
+    '__init_subclass__',
+    '__le__',
+    '__lt__',
+    '__module__',
+    '__ne__',
+    '__new__',
+    '__reduce__',
+    '__reduce_ex__',
+    '__repr__',
+    '__setattr__',
+    '__setstate__',
+    '__sizeof__',
+    '__str__',
+    '__subclasshook__',
+    '__weakref__',
+    '_check_column_name_clashes',
+    '_check_constraints',
+    '_check_db_table_comment',
+    '_check_default_pk',
+    '_check_field_name_clashes',
+    '_check_fields',
+    '_check_id_field',
+    '_check_index_together',
+    '_check_indexes',
+    '_check_local_fields',
+    '_check_long_column_names',
+    '_check_m2m_through_same_relationship',
+    '_check_managers',
+    '_check_model',
+    '_check_model_name_db_lookup_clashes',
+    '_check_ordering',
+    '_check_property_name_related_field_accessor_clashes',
+    '_check_single_primary_key',
+    '_check_swappable',
+    '_check_unique_together',
+    '_do_insert',
+    '_do_update',
+    '_get_FIELD_display',
+    '_get_expr_references',
+    '_get_field_value_map',
+    '_get_next_or_previous_by_FIELD',
+    '_get_next_or_previous_in_order',
+    '_get_pk_val',
+    '_get_unique_checks',
+    '_meta',
+    '_perform_date_checks',
+    '_perform_unique_checks',
+    '_prepare_related_fields_for_save',
+    '_save_parents',
+    '_save_table',
+    '_set_pk_val',
+    '_state',  # 多了这个属性
+    'address',
+    'adelete',
+    'arefresh_from_db',
+    'asave',
+    'check',
+    'clean',
+    'clean_fields',
+    'date_error_message',
+    'delete',
+    'from_db',
+    'full_clean',
+    'get_constraints',
+    'get_deferred_fields',
+    'id',
+    'name',
+    'objects',
+    'pk',
+    'prepare_database_save',
+    'refresh_from_db',
+    'restaurant',
+    'save',
+    'save_base',
+    'serializable_value',
+    'unique_error_message',
+    'validate_constraints',
+    'validate_unique'
+]
+>>> dir(Restaurant)
+['DoesNotExist', 'MultipleObjectsReturned', '__class__', '__delattr__', '__dict__', '__dir__', '__doc__', '__eq__', '__format__', '__ge__', '__getattribute__', '__getstate__', '__gt__', '__hash__', '__init__', '__init_subclass__', '__le__', '__lt__', '__module__', '__ne__', '__new__', '__reduce__', '__reduce_ex__', '__repr__', '__setattr__', '__setstate__', '__sizeof__', '__str__', '__subclasshook__', '__weakref__', '_check_column_name_clashes', '_check_constraints', '_check_db_table_comment', '_check_default_pk', '_check_field_name_clashes', '_check_fields', '_check_id_field', '_check_index_together', '_check_indexes', '_check_local_fields', '_check_long_column_names', '_check_m2m_through_same_relationship', '_check_managers', '_check_model', '_check_model_name_db_lookup_clashes', '_check_ordering', '_check_property_name_related_field_accessor_clashes', '_check_single_primary_key', '_check_swappable', '_check_unique_together', '_do_insert', '_do_update', '_get_FIELD_display', '_get_expr_references', '_get_field_value_map', '_get_next_or_previous_by_FIELD', '_get_next_or_previous_in_order', '_get_pk_val', '_get_unique_checks', '_meta', '_perform_date_checks', '_perform_unique_checks', '_prepare_related_fields_for_save', '_save_parents', '_save_table', '_set_pk_val', 'adelete', 'arefresh_from_db', 'asave', 'check', 'clean', 'clean_fields', 'date_error_message', 'delete', 'from_db', 'full_clean', 'get_constraints', 'get_deferred_fields', 'objects', 'pk', 'place', 'place_id', 'prepare_database_save', 'refresh_from_db', 'save', 'save_base', 'serializable_value', 'serves_hot_dogs', 'serves_pizza', 'unique_error_message', 'validate_constraints', 'validate_unique', 'waiter_set']
+>>> dir(r)
+[
+    'DoesNotExist',
+    'MultipleObjectsReturned',
+    '__class__',
+    '__delattr__',
+    '__dict__',
+    '__dir__',
+    '__doc__',
+    '__eq__',
+    '__format__',
+    '__ge__',
+    '__getattribute__',
+    '__getstate__',
+    '__gt__',
+    '__hash__',
+    '__init__',
+    '__init_subclass__',
+    '__le__',
+    '__lt__',
+    '__module__',
+    '__ne__',
+    '__new__',
+    '__reduce__',
+    '__reduce_ex__',
+    '__repr__',
+    '__setattr__',
+    '__setstate__',
+    '__sizeof__',
+    '__str__',
+    '__subclasshook__',
+    '__weakref__',
+    '_check_column_name_clashes',
+    '_check_constraints',
+    '_check_db_table_comment',
+    '_check_default_pk',
+    '_check_field_name_clashes',
+    '_check_fields',
+    '_check_id_field',
+    '_check_index_together',
+    '_check_indexes',
+    '_check_local_fields',
+    '_check_long_column_names',
+    '_check_m2m_through_same_relationship',
+    '_check_managers',
+    '_check_model',
+    '_check_model_name_db_lookup_clashes',
+    '_check_ordering',
+    '_check_property_name_related_field_accessor_clashes',
+    '_check_single_primary_key',
+    '_check_swappable',
+    '_check_unique_together',
+    '_do_insert',
+    '_do_update',
+    '_get_FIELD_display',
+    '_get_expr_references',
+    '_get_field_value_map',
+    '_get_next_or_previous_by_FIELD',
+    '_get_next_or_previous_in_order',
+    '_get_pk_val',
+    '_get_unique_checks',
+    '_meta',
+    '_perform_date_checks',
+    '_perform_unique_checks',
+    '_prepare_related_fields_for_save',
+    '_save_parents',
+    '_save_table',
+    '_set_pk_val',
+    '_state',  # 多了这个属性
+    'adelete',
+    'arefresh_from_db',
+    'asave',
+    'check',
+    'clean',
+    'clean_fields',
+    'date_error_message',
+    'delete',
+    'from_db',
+    'full_clean',
+    'get_constraints',
+    'get_deferred_fields',
+    'objects',
+    'pk',
+    'place',
+    'place_id',
+    'prepare_database_save',
+    'refresh_from_db',
+    'save',
+    'save_base',
+    'serializable_value',
+    'serves_hot_dogs',
+    'serves_pizza',
+    'unique_error_message',
+    'validate_constraints',
+    'validate_unique',
+    'waiter_set'
+]
+>>>
 
-合并起来就是 `pub_date <= '2006-01-01'`
+>>> r.place
+<Place: Demon Dogs the place>
+>>>
+>>> p1.restaurant
+<Restaurant: Demon Dogs the restaurant>
+>>>
 
-因此掌握 lookuptype 就是重中之重，django 支持多种 lookuptype，例如 exact、iexact、contains、icontains 等等
+>>> p2.restaurant
+(0.004) SELECT "myapp_restaurant"."place_id", "myapp_restaurant"."serves_hot_dogs", "myapp_restaurant"."serves_pizza" FROM "myapp_restaurant" WHERE "myapp_restaurant"."place_id" = 2 LIMIT 21; args=(2,); alias=default
+Traceback (most recent call last):
+  File "<console>", line 1, in <module>
+  File "/usr/local/lib/python3.10/site-packages/django/db/models/fields/related_descriptors.py", line 492, in __get__
+    raise self.RelatedObjectDoesNotExist(
+myapp.models.Place.restaurant.RelatedObjectDoesNotExist: Place has no restaurant.
+>>>
 
-完整的 lookuptype 请参考 https://docs.djangoproject.com/en/4.2/ref/models/querysets/#field-lookups
+>>> hasattr(p2, "restaurant")
+False
+>>> hasattr(p1, "restaurant")
+True
+>>>
 
-最快的掌握这些 lookuptype 的方法就是直接查看日志确定最终生成的 SQL 语句。
+>>> r.place = p2
+>>> r.save()
+(0.001) UPDATE "myapp_restaurant" SET "serves_hot_dogs" = 1, "serves_pizza" = 0 WHERE "myapp_restaurant"."place_id" = 2; args=(True, False, 2); alias=default
+(0.013) INSERT INTO "myapp_restaurant" ("place_id", "serves_hot_dogs", "serves_pizza") VALUES (2, 1, 0); args=(2, True, False); alias=default
+>>> p2.restaurant
+<Restaurant: Ace Hardware the restaurant>
+>>> r.place
+<Place: Ace Hardware the place>
+>>>
 
+>>> p1.restaurant = r
+>>> p1.restaurant
+<Restaurant: Demon Dogs the restaurant>
+>>>
 
-### 多表关联查询
+>>> p3 = Place(name="Demon Dogs", address="944 W. Fullerton")
+>>> Restaurant.objects.create(place=p3, serves_hot_dogs=True, serves_pizza=False)
+Traceback (most recent call last):
+  File "<console>", line 1, in <module>
+  File "/usr/local/lib/python3.10/site-packages/django/db/models/manager.py", line 87, in manager_method
+    return getattr(self.get_queryset(), name)(*args, **kwargs)
+  File "/usr/local/lib/python3.10/site-packages/django/db/models/query.py", line 658, in create
+    obj.save(force_insert=True, using=self.db)
+  File "/usr/local/lib/python3.10/site-packages/django/db/models/base.py", line 778, in save
+    self._prepare_related_fields_for_save(operation_name="save")
+  File "/usr/local/lib/python3.10/site-packages/django/db/models/base.py", line 1093, in _prepare_related_fields_for_save
+    raise ValueError(
+ValueError: save() prohibited to prevent data loss due to unsaved related object 'place'.
+>>>
 
-Django 支持三种关联关系的定义，many-to-one, many-to-many and one-to-one，因此多表关联查询就成为可能。
-掌握多表关联查询的关键点就是要知道定义关联关系之后，models 中增加的额外字段的含义，例如
+>>> Restaurant.objects.all()
+(0.004) SELECT "myapp_restaurant"."place_id", "myapp_restaurant"."serves_hot_dogs", "myapp_restaurant"."serves_pizza" FROM "myapp_restaurant" LIMIT 21; args=(); alias=default
+(0.001) SELECT "myapp_place"."id", "myapp_place"."name", "myapp_place"."address" FROM "myapp_place" WHERE "myapp_place"."id" = 1 LIMIT 21; args=(1,); alias=default
+(0.001) SELECT "myapp_place"."id", "myapp_place"."name", "myapp_place"."address" FROM "myapp_place" WHERE "myapp_place"."id" = 2 LIMIT 21; args=(2,); alias=default
+<QuerySet [<Restaurant: Demon Dogs the restaurant>, <Restaurant: Ace Hardware the restaurant>]>
+>>>
+>>> Place.objects.order_by("name")
+(0.002) SELECT "myapp_place"."id", "myapp_place"."name", "myapp_place"."address" FROM "myapp_place" ORDER BY "myapp_place"."name" ASC LIMIT 21; args=(); alias=default
+<QuerySet [<Place: Ace Hardware the place>, <Place: Demon Dogs the place>]>
+>>>
 
-```python
-class Manufacturer(models.Model):
-    """
-    >>> set(dir(Manufacturer)).difference(m)
-    {'car_set', '_meta', 'objects', 'id', 'DoesNotExist', 'MultipleObjectsReturned'}
-    >>>
-    """
-    pass
+>>> Restaurant.objects.get(place=p1)
+(0.001) SELECT "myapp_restaurant"."place_id", "myapp_restaurant"."serves_hot_dogs", "myapp_restaurant"."serves_pizza" FROM "myapp_restaurant" WHERE "myapp_restaurant"."place_id" = 1 LIMIT 21; args=(1,); alias=default
+(0.001) SELECT "myapp_place"."id", "myapp_place"."name", "myapp_place"."address" FROM "myapp_place" WHERE "myapp_place"."id" = 1 LIMIT 21; args=(1,); alias=default
+<Restaurant: Demon Dogs the restaurant>
+>>> Restaurant.objects.get(place__pk=1)
+(0.001) SELECT "myapp_restaurant"."place_id", "myapp_restaurant"."serves_hot_dogs", "myapp_restaurant"."serves_pizza" FROM "myapp_restaurant" WHERE "myapp_restaurant"."place_id" = 1 LIMIT 21; args=(1,); alias=default
+(0.001) SELECT "myapp_place"."id", "myapp_place"."name", "myapp_place"."address" FROM "myapp_place" WHERE "myapp_place"."id" = 1 LIMIT 21; args=(1,); alias=default
+<Restaurant: Demon Dogs the restaurant>
+>>> Restaurant.objects.filter(place__name__startswith="Demon")
+(0.001) SELECT "myapp_restaurant"."place_id", "myapp_restaurant"."serves_hot_dogs", "myapp_restaurant"."serves_pizza" FROM "myapp_restaurant" INNER JOIN "myapp_place" ON ("myapp_restaurant"."place_id" = "myapp_place"."id") WHERE "myapp_place"."name" LIKE 'Demon%' ESCAPE '\' LIMIT 21; args=('Demon%',); alias=default
+(0.001) SELECT "myapp_place"."id", "myapp_place"."name", "myapp_place"."address" FROM "myapp_place" WHERE "myapp_place"."id" = 1 LIMIT 21; args=(1,); alias=default
+<QuerySet [<Restaurant: Demon Dogs the restaurant>]>
+>>> Restaurant.objects.exclude(place__address__contains="Ashland")
+(0.001) SELECT "myapp_restaurant"."place_id", "myapp_restaurant"."serves_hot_dogs", "myapp_restaurant"."serves_pizza" FROM "myapp_restaurant" INNER JOIN "myapp_place" ON ("myapp_restaurant"."place_id" = "myapp_place"."id") WHERE NOT ("myapp_place"."address" LIKE '%Ashland%' ESCAPE '\') LIMIT 21; args=('%Ashland%',); alias=default
+(0.001) SELECT "myapp_place"."id", "myapp_place"."name", "myapp_place"."address" FROM "myapp_place" WHERE "myapp_place"."id" = 1 LIMIT 21; args=(1,); alias=default
+<QuerySet [<Restaurant: Demon Dogs the restaurant>]>
+>>> Place.objects.get(pk=1)
+(0.001) SELECT "myapp_place"."id", "myapp_place"."name", "myapp_place"."address" FROM "myapp_place" WHERE "myapp_place"."id" = 1 LIMIT 21; args=(1,); alias=default
+<Place: Demon Dogs the place>
+>>> Place.objects.get(restaurant__place=p1)
+(0.001) SELECT "myapp_place"."id", "myapp_place"."name", "myapp_place"."address" FROM "myapp_place" INNER JOIN "myapp_restaurant" ON ("myapp_place"."id" = "myapp_restaurant"."place_id") WHERE "myapp_restaurant"."place_id" = 1 LIMIT 21; args=(1,); alias=default
+<Place: Demon Dogs the place>
+>>> Place.objects.get(restaurant=r)
+(0.001) SELECT "myapp_place"."id", "myapp_place"."name", "myapp_place"."address" FROM "myapp_place" INNER JOIN "myapp_restaurant" ON ("myapp_place"."id" = "myapp_restaurant"."place_id") WHERE "myapp_restaurant"."place_id" = 1 LIMIT 21; args=(1,); alias=default
+<Place: Demon Dogs the place>
+>>> Place.objects.get(restaurant__place__name__startswith="Demon")
+(0.002) SELECT "myapp_place"."id", "myapp_place"."name", "myapp_place"."address" FROM "myapp_place" INNER JOIN "myapp_restaurant" ON ("myapp_place"."id" = "myapp_restaurant"."place_id") INNER JOIN "myapp_place" T3 ON ("myapp_restaurant"."place_id" = T3."id") WHERE T3."name" LIKE 'Demon%' ESCAPE '\' LIMIT 21; args=('Demon%',); alias=default
+<Place: Demon Dogs the place>
+>>>
 
+>>> p2.delete()
+(0.002) SELECT "myapp_restaurant"."place_id" FROM "myapp_restaurant" WHERE "myapp_restaurant"."place_id" IN (2); args=(2,); alias=default
+(0.000) BEGIN; args=None; alias=default
+(0.003) DELETE FROM "myapp_waiter" WHERE "myapp_waiter"."restaurant_id" IN (2); args=(2,); alias=default
+(0.008) DELETE FROM "myapp_restaurant" WHERE "myapp_restaurant"."place_id" IN (2); args=(2,); alias=default
+(0.003) DELETE FROM "myapp_place" WHERE "myapp_place"."id" IN (2); args=(2,); alias=default
+(0.006) COMMIT; args=None; alias=default
+(2, {'myapp.Restaurant': 1, 'myapp.Place': 1})
+>>> Restaurant.objects.all()
+(0.003) SELECT "myapp_restaurant"."place_id", "myapp_restaurant"."serves_hot_dogs", "myapp_restaurant"."serves_pizza" FROM "myapp_restaurant" LIMIT 21; args=(); alias=default
+(0.001) SELECT "myapp_place"."id", "myapp_place"."name", "myapp_place"."address" FROM "myapp_place" WHERE "myapp_place"."id" = 1 LIMIT 21; args=(1,); alias=default
+<QuerySet [<Restaurant: Demon Dogs the restaurant>]>
+>>>
 
-class Car(models.Model):
-    """
-    >>> set(dir(Car)).difference(m)
-    {'manufacturer_id', 'manufacturer', '_meta', 'objects', 'id', 'DoesNotExist', 'MultipleObjectsReturned'}
-    >>>
-    """
-    manufacturer = models.ForeignKey(Manufacturer, on_delete=models.CASCADE)
-    # ...
+>>> w = r.waiter_set.create(name="Joe")
+(0.018) INSERT INTO "myapp_waiter" ("restaurant_id", "name") VALUES (1, 'Joe'); args=[1, 'Joe']; alias=default
+>>> w
+<Waiter: Joe the waiter at Demon Dogs the restaurant>
+>>> Waiter.objects.filter(restaurant__place=p1)
+(0.003) SELECT "myapp_waiter"."id", "myapp_waiter"."restaurant_id", "myapp_waiter"."name" FROM "myapp_waiter" WHERE "myapp_waiter"."restaurant_id" = 1 LIMIT 21; args=(1,); alias=default
+(0.001) SELECT "myapp_restaurant"."place_id", "myapp_restaurant"."serves_hot_dogs", "myapp_restaurant"."serves_pizza" FROM "myapp_restaurant" WHERE "myapp_restaurant"."place_id" = 1 LIMIT 21; args=(1,); alias=default
+(0.001) SELECT "myapp_place"."id", "myapp_place"."name", "myapp_place"."address" FROM "myapp_place" WHERE "myapp_place"."id" = 1 LIMIT 21; args=(1,); alias=default
+<QuerySet [<Waiter: Joe the waiter at Demon Dogs the restaurant>]>
+>>> Waiter.objects.filter(restaurant__place__name__startswith="Demon")
+(0.002) SELECT "myapp_waiter"."id", "myapp_waiter"."restaurant_id", "myapp_waiter"."name" FROM "myapp_waiter" INNER JOIN "myapp_restaurant" ON ("myapp_waiter"."restaurant_id" = "myapp_restaurant"."place_id") INNER JOIN "myapp_place" ON ("myapp_restaurant"."place_id" = "myapp_place"."id") WHERE "myapp_place"."name" LIKE 'Demon%' ESCAPE '\' LIMIT 21; args=('Demon%',); alias=default
+(0.001) SELECT "myapp_restaurant"."place_id", "myapp_restaurant"."serves_hot_dogs", "myapp_restaurant"."serves_pizza" FROM "myapp_restaurant" WHERE "myapp_restaurant"."place_id" = 1 LIMIT 21; args=(1,); alias=default
+(0.001) SELECT "myapp_place"."id", "myapp_place"."name", "myapp_place"."address" FROM "myapp_place" WHERE "myapp_place"."id" = 1 LIMIT 21; args=(1,); alias=default
+<QuerySet [<Waiter: Joe the waiter at Demon Dogs the restaurant>]>
+>>>
 
 ```
-
-汽车和汽车制造商之前存在一对一的关系，也就是一辆汽车只有一个汽车制造商，所以在 Car 类中定义了 manufacturer 字段，表示这辆汽车的汽车制造商。
-
-如上所示，Car 类中就有了 manufacturer 属性，Manufacturer 类中就有了 car_set 属性，注意，这个属性是自动添加的，不需要认为干预，并且这个字段的名称可以自定义。
-
-在 Car 类中，如果要查找汽车制造商的信息，直接使用 manufacturer 字段即可
-在 Manufacturer 类中，如果要查找汽车信息，直接使用 car_set 字段即可
-使用方法和普通字段一样。
-
-同样的，在多对多关系中，也有相应的字段，和多对一完全相同
-
-```python
-# Many-to-many relationships
-class Topping(models.Model):
-    """
-    >>> set(dir(Topping)).difference(m)
-    {'_meta', 'pizza_set', 'objects', 'id', 'DoesNotExist', 'MultipleObjectsReturned'}
-    >>>
-    """
-    pass
-
-
-class Pizza(models.Model):
-    """
-    >>> set(dir(Pizza)).difference(m)
-    {'_meta', 'toppings', 'objects', 'id', 'DoesNotExist', 'MultipleObjectsReturned'}
-    >>>
-    """
-    toppings = models.ManyToManyField(Topping)
-
-```
-
