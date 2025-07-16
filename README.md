@@ -269,6 +269,40 @@ LOGGING = {
 
 * https://docs.djangoproject.com/en/4.2/topics/db/
 
+## How to provide initial data for models
+
+    * https://docs.djangoproject.com/en/4.2/howto/initial-data/
+
+    * https://docs.djangoproject.com/en/4.2/topics/db/fixtures/
+
+```bash
+root@d9641a2af30b:/django-tutorial-4.2/mysite# python manage.py loaddata sample
+<--""
+   Level WARNING
+************************************ manage.py ************************************
+(0.000) BEGIN; args=None; alias=default
+(0.000) PRAGMA foreign_keys = OFF; args=None; alias=default
+(0.000) PRAGMA foreign_keys; args=None; alias=default
+(0.002) UPDATE "myapp_person" SET "first_name" = 'John', "last_name" = 'Lennon' WHERE "myapp_person"."id" = 1; args=('John', 'Lennon', 1); alias=default
+(0.000) UPDATE "myapp_person" SET "first_name" = 'Paul', "last_name" = 'McCartney' WHERE "myapp_person"."id" = 2; args=('Paul', 'McCartney', 2); alias=default
+(0.000) PRAGMA foreign_key_check("myapp_person"); args=None; alias=default
+Installed 2 object(s) from 1 fixture(s)
+(0.000) COMMIT; args=None; alias=default
+root@d9641a2af30b:/django-tutorial-4.2/mysite#
+root@d9641a2af30b:/django-tutorial-4.2/mysite# python manage.py loaddata /django-tutorial-4.2/mysite/myapp/fixtures/sample.json
+<--""
+   Level WARNING
+************************************ manage.py ************************************
+(0.000) BEGIN; args=None; alias=default
+(0.000) PRAGMA foreign_keys = OFF; args=None; alias=default
+(0.000) PRAGMA foreign_keys; args=None; alias=default
+(0.002) UPDATE "myapp_person" SET "first_name" = 'John', "last_name" = 'Lennon' WHERE "myapp_person"."id" = 1; args=('John', 'Lennon', 1); alias=default
+(0.000) UPDATE "myapp_person" SET "first_name" = 'Paul', "last_name" = 'McCartney' WHERE "myapp_person"."id" = 2; args=('Paul', 'McCartney', 2); alias=default
+(0.000) PRAGMA foreign_key_check("myapp_person"); args=None; alias=default
+Installed 2 object(s) from 1 fixture(s)
+(0.000) COMMIT; args=None; alias=default
+root@d9641a2af30b:/django-tutorial-4.2/mysite#
+```
 
 # 第四部分: settings
 
@@ -602,6 +636,8 @@ True
 pip install -i https://pypi.tuna.tsinghua.edu.cn/simple django-extensions==3.2.3
 
 # 在配置文件中增加应用
+
+* [URL dispatcher](https://docs.djangoproject.com/en/4.2/topics/http/urls/)
 
 root@2837a3ba341d:/django-tutorial-4.2/mysite# python manage.py show_urls
 <--""
